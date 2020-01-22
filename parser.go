@@ -16,8 +16,52 @@ const (
 	CaseCapital
 )
 
+type path struct {
+	root *reflect.Value
+	path []string
+}
+
+func (p *path) Subpath(name string) *path {
+	return &path{
+		root: p.root,
+		path: append(p.path, name),
+	}
+}
+
+func (p *path) Set(in reflect.Value) {
+	v := *p.root
+	for _, s := range p.path {
+		if v.Kind() == reflect.Ptr {
+			if v.IsNil() {
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+			v = v.Elem()
+		}
+		v = v.FieldByName(s)
+	}
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+	v.Set(in)
+}
+
+type arg struct {
+	path       *path
+	typ        reflect.Type
+	long       string
+	short      string
+	global     bool
+	positional bool
+	required   bool
+	separate   bool
+}
+
 type command struct {
 	parent *command
+	roots  []reflect.Value
 	name   string
 	hidden bool
 	args   map[string]*arg
@@ -25,35 +69,69 @@ type command struct {
 	subcmd map[string]*command
 }
 
-func (c *command) Parse(args ...interface{}) {
-
+func NewCommand(name string, args ...interface{}) *command {
+	c := &command{
+		name:   name,
+		subcmd: map[string]*command{},
+		args:   map[string]*arg{},
+	}
+	c.Parse(args...)
+	return c
 }
 
-func (c *command) AddArg(long, short, help string) {
+func (c *command) Parse(args ...interface{}) {
+	for _, a := range args {
+		t := reflect.TypeOf(a)
+		if t.Kind() != reflect.Ptr && t.Elem().Kind() != reflect.Struct {
+			panic("not ptr to struct")
+		}
+		p := c.addRoot(a)
+		walkStruct(c, t, p, "", false)
+	}
+}
 
+func (c *command) AddArg(name string, in interface{}) {
+	p := c.addRoot(in)
+	c.addArg(name, reflect.TypeOf(in), p)
 }
 
 func (c *command) AddSubcmd(name string, in interface{}) *command {
-
-	return nil
+	p := c.addRoot(in)
+	c.addSubcmd(name, reflect.TypeOf(in), p)
+	return c.subcmd[name]
 }
 
-type arg struct {
-	path  path
-	typ   reflect.Type
-	long  string
-	short string
-	tag   *clitag
+func (c *command) addRoot(in interface{}) *path {
+	c.roots = append(c.roots, reflect.ValueOf(in))
+	return &path{
+		root: &c.roots[len(c.roots)-1],
+	}
 }
 
-type path struct {
-	root interface{}
-	path []string
+func (c *command) addArg(name string, t reflect.Type, p *path) {
+	a := &arg{
+		path: p,
+		typ:  t,
+		long: name,
+	}
+	c.args[name] = a
+}
+
+func (c *command) addSubcmd(name string, t reflect.Type, p *path) {
+	sc := &command{
+		parent: c,
+		name:   name,
+		subcmd: map[string]*command{},
+		args:   map[string]*arg{},
+	}
+	walkStruct(sc, t, p, "", false)
+	c.subcmd[name] = sc
 }
 
 type Parser struct {
-	roots map[int]interface{}
-	enums map[string]map[string]interface{}
+	roots  []reflect.Value
+	enums  map[string]map[string]interface{}
+	ifaces map[string]map[interface{}]interface{}
 }
 
 func (p *Parser) RegisterEnum(name string, enmap map[string]interface{}) {
@@ -80,7 +158,7 @@ func ParseArgs(in interface{}, args []string) (*Parser, error) {
 	return nil, nil
 }
 
-func walkStruct(t reflect.Type, pfx string, isArg bool, fanc func(typ reflect.Type, name string, tag *clitag)) {
+func walkStruct(c *command, t reflect.Type, pth *path, pfx string, isArg bool) {
 	if isPtr(t) {
 		t = t.Elem()
 	}
@@ -104,45 +182,38 @@ func walkStruct(t reflect.Type, pfx string, isArg bool, fanc func(typ reflect.Ty
 		if pfx != "" {
 			name = pfx + "." + name
 		}
+		spth := pth.Subpath(fn)
 		if isStruct(ft) {
 			if f.Anonymous {
-				walkStruct(ft, pfx, isArg, fanc)
+				walkStruct(c, ft, spth, pfx, isArg)
 				continue
 			}
 			if isArg {
-				walkStruct(ft, name, isArg, fanc)
+				walkStruct(c, ft, spth, name, isArg)
 				continue
 			}
 			if tag.isArg || !isPtr(ft) {
-				walkStruct(ft, name, true, fanc)
+				walkStruct(c, ft, spth, name, true)
 				continue
 			}
+			c.addSubcmd(name, ft, spth)
+			continue
 		}
-		fanc(ft, name, tag)
+		c.addArg(name, ft, spth)
 	}
 }
 
-func parseCmd(t reflect.Type, name string, par *command, acase ArgCase) *command {
-	c := &command{
-		parent: par,
-		name:   name,
-		subcmd: map[string]*command{},
-		args:   map[string]*arg{},
+func parseTag(s string) map[string]string {
+	m := map[string]string{}
+	if s != "" {
+		parts := strings.Split(s, ",")
+		for _, p := range parts {
+			if i := strings.Index(p, "="); i != -1 {
+				m[p[:i]] = p[i+1:]
+				continue
+			}
+			m[p] = ""
+		}
 	}
-	walkStruct(t, "", false, func(typ reflect.Type, name string, tag *clitag) {
-		if isStruct(typ) {
-			c.subcmd[name] = parseCmd(typ, name, c, acase)
-			return
-		}
-		arg := &arg{
-			typ:  typ,
-			long: name,
-			tag:  tag,
-		}
-		if tag.short != "" {
-			arg.short = tag.short
-		}
-		c.args[name] = arg
-	})
-	return c
+	return m
 }

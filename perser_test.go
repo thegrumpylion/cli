@@ -52,7 +52,7 @@ func TestParse(t *testing.T) {
 		EmbFloat float64
 		EmbCmd   *subCmd
 	}
-	args := struct {
+	args := &struct {
 		embbb
 		extern   embbb
 		Str      string
@@ -66,7 +66,7 @@ func TestParse(t *testing.T) {
 		Cmd      *subCmd
 	}{}
 
-	cmd := parseCmd(reflect.TypeOf(args), "test", nil, CaseLower)
+	cmd := NewCommand("test", args)
 
 	fmt.Println(cmd)
 }
@@ -101,4 +101,39 @@ func TestArray(t *testing.T) {
 
 	fmt.Println(ta.Kind(), ts.Kind())
 	fmt.Println(ta.Len())
+}
+
+func TestPath(t *testing.T) {
+	type strukt struct {
+		String *string
+		Int    *int
+	}
+
+	s := &strukt{}
+	v := reflect.ValueOf(s)
+	p1 := path{
+		root: &v,
+		path: []string{"String"},
+	}
+	p2 := path{
+		root: &v,
+		path: []string{"Int"},
+	}
+	p1.Set(reflect.ValueOf("value"))
+	p2.Set(reflect.ValueOf(42))
+
+	fmt.Println("lets see", *s.String, *s.Int)
+}
+
+func TestVariadic(t *testing.T) {
+	f := func(args ...interface{}) {
+		for _, arg := range args {
+			fmt.Println(arg)
+		}
+	}
+
+	f("asfsdf", 234, struct {
+		S string
+		I int
+	}{})
 }
