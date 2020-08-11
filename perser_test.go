@@ -2,41 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 )
-
-func TestRefl(t *testing.T) {
-	args := &struct {
-		S struct {
-			A string
-			B int
-		}
-	}{}
-
-	var a, b reflect.Value
-	var av, bv interface{}
-	av = "value"
-	bv = 42
-
-	v := reflect.ValueOf(args)
-	if v.Type().Kind() != reflect.Ptr {
-		t.Fatalf("cannot set")
-	}
-
-	v = v.Elem()
-	if v.Type().Kind() != reflect.Struct {
-		t.Fatalf("not a struct")
-	}
-
-	a = v.FieldByName("S").FieldByName("A")
-	b = v.FieldByName("S").FieldByName("B")
-
-	a.Set(reflect.ValueOf(av))
-	b.Set(reflect.ValueOf(bv))
-
-	fmt.Println(args)
-}
 
 func TestParse(t *testing.T) {
 	type subCmd struct {
@@ -66,74 +33,131 @@ func TestParse(t *testing.T) {
 		Cmd      *subCmd
 	}{}
 
-	cmd := NewCommand("test", args)
+	cmd := NewRootCommand("test", args)
 
 	fmt.Println(cmd)
 }
 
-// MuhEnm
-type MuhEnm int
+func TestEnumRegistration(t *testing.T) {
 
-const (
-	Ena MuhEnm = iota
-	Dio
-	Tria
-)
+	type MuhEnm int
 
-func TestTypeName(t *testing.T) {
-	m := map[string]MuhEnm{}
+	const (
+		Ena MuhEnm = iota + 1
+		Dio
+		Tria
+	)
 
-	ty := reflect.TypeOf(m)
+	enumMap := map[string]MuhEnm{
+		"ena":  Ena,
+		"dio":  Dio,
+		"tria": Tria,
+	}
 
-	te := ty.Elem()
-	tk := ty.Key()
+	args := &struct {
+		Enum MuhEnm
+	}{}
 
-	fmt.Println(te.PkgPath() + "." + te.Name())
-	fmt.Println(tk.PkgPath() + "." + tk.Name())
+	RegisterEnum(enumMap)
+	NewRootCommand("root", args)
+	err := Eval([]string{"root", "--enum", "dio"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if args.Enum != Dio {
+		t.Fatal("args.Enum != Dio")
+	}
+
 }
 
-func TestArray(t *testing.T) {
-	a := [4]string{}
-	s := []string{}
+func TestString(t *testing.T) {
+	args := &struct {
+		String string
+	}{}
 
-	ta := reflect.TypeOf(a)
-	ts := reflect.TypeOf(s)
+	NewRootCommand("root", args)
 
-	fmt.Println(ta.Kind(), ts.Kind())
-	fmt.Println(ta.Len())
+	err := Eval([]string{"root", "--string", "stringVal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if args.String != "stringVal" {
+		t.Fatal("args.String != stringVal")
+	}
 }
 
-func TestPath(t *testing.T) {
-	type strukt struct {
-		String *string
-		Int    *int
+func TestInt(t *testing.T) {
+	args := &struct {
+		Int   int
+		Int8  int8
+		Int16 int16
+		Int32 int32
+		Int64 int64
+	}{}
+
+	NewRootCommand("root", args)
+
+	err := Eval([]string{"root", "--int", "-23", "--int8", "-3", "--int16", "-24000", "--int32", "-70123", "--int64", "-10200300"})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	s := &strukt{}
-	v := reflect.ValueOf(s)
-	p1 := path{
-		root: &v,
-		path: []string{"String"},
+	if args.Int != -23 {
+		t.Fatal("args.Int != -23")
 	}
-	p2 := path{
-		root: &v,
-		path: []string{"Int"},
-	}
-	p1.Set(reflect.ValueOf("value"))
-	p2.Set(reflect.ValueOf(42))
 
-	fmt.Println("lets see", *s.String, *s.Int)
+	if args.Int8 != -3 {
+		t.Fatal("args.Int8 != -3")
+	}
+
+	if args.Int16 != -24000 {
+		t.Fatal("args.Int16 != -24000")
+	}
+
+	if args.Int32 != -70123 {
+		t.Fatal("args.Int32 != -70123")
+	}
+
+	if args.Int64 != -10200300 {
+		t.Fatal("args.Int64 != -10200300")
+	}
 }
 
-func TestVariadic(t *testing.T) {
-	f := func(args ...interface{}) {
-		for _, arg := range args {
-			fmt.Println(arg)
-		}
+func TestUint(t *testing.T) {
+	args := &struct {
+		Uint   uint
+		Uint8  uint8
+		Uint16 uint16
+		Uint32 uint32
+		Uint64 uint64
+	}{}
+
+	NewRootCommand("root", args)
+
+	err := Eval([]string{"root", "--uint", "23", "--uint8", "3", "--uint16", "24000", "--uint32", "70123", "--uint64", "10200300"})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	f("asfsdf", 234, struct {
-		S string
-		I int
-	}{})
+	if args.Uint != 23 {
+		t.Fatal("args.Uint != 23")
+	}
+
+	if args.Uint8 != 3 {
+		t.Fatal("args.Uint8 != 3")
+	}
+
+	if args.Uint16 != 24000 {
+		t.Fatal("args.Uint16 != 24000")
+	}
+
+	if args.Uint32 != 70123 {
+		t.Fatal("args.Uint32 != 70123")
+	}
+
+	if args.Uint64 != 10200300 {
+		t.Fatal("args.Uint64 != 10200300")
+	}
 }

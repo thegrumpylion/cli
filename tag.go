@@ -6,13 +6,17 @@ import (
 )
 
 type clitag struct {
-	long     string
-	short    string
-	required bool
-	isArg    bool
-	global   bool
-	csv      bool
-	embed    bool
+	long       string
+	short      string
+	required   bool
+	positional bool
+	isArg      bool
+	global     bool
+	csv        bool
+	embed      bool
+	enum       string
+	iface      string
+	flag       string
 }
 
 func parseCliTag(s string) *clitag {
