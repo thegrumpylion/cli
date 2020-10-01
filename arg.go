@@ -18,6 +18,7 @@ type argument struct {
 	required   bool
 	separate   bool
 	enum       bool
+	iface      bool
 }
 
 func (a *argument) isBool() bool {

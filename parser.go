@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -33,11 +34,12 @@ type iface struct {
 }
 
 type Parser struct {
-	roots  []reflect.Value
-	cmds   map[string]*command
-	enums  map[reflect.Type]map[string]interface{}
-	ifaces map[string]*iface
-	strict bool
+	strict   bool
+	roots    []reflect.Value
+	cmds     map[string]*command
+	enums    map[reflect.Type]map[string]interface{}
+	ifaces   map[string]*iface
+	execTree []interface{}
 }
 
 func NewParser() *Parser {
@@ -213,6 +215,87 @@ func (p *Parser) Eval(args []string) error {
 	}
 
 	return nil
+}
+
+type OnErrorStrategy uint
+
+const (
+	OnErrorBreak OnErrorStrategy = iota
+	OnErrorPostRunners
+	OnErrorPostRunnersContinue
+	OnErrorContinue
+)
+
+func (p *Parser) Execute(ctx context.Context, strategy OnErrorStrategy) error {
+
+	var err error
+	lastCmd := len(p.execTree) - 1
+	pPostRunners := []PersistentPostRunner{}
+
+	for i, inf := range p.execTree {
+		// PersistentPostRun pushed on a stack to run in a reverse order
+		// check
+		if rnr, ok := inf.(PersistentPostRunner); ok {
+			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
+		}
+		// PersistentPreRun
+		if rnr, ok := inf.(PersistentPreRunner); ok {
+			newCtx, err := rnr.PersistentPreRun(ctx, err)
+			if newCtx != nil {
+				ctx = newCtx
+			}
+			if err != nil && !(strategy == OnErrorContinue) {
+				break
+			}
+		}
+		if i == lastCmd {
+			// PreRun
+			if rnr, ok := inf.(PreRunner); ok {
+				newCtx, err := rnr.PreRun(ctx, err)
+				if newCtx != nil {
+					ctx = newCtx
+				}
+				if err != nil && !(strategy == OnErrorContinue) {
+					break
+				}
+			}
+			// Run
+			if rnr, ok := inf.(Runner); ok {
+				newCtx, err := rnr.Run(ctx, err)
+				if newCtx != nil {
+					ctx = newCtx
+				}
+				if err != nil && !(strategy == OnErrorContinue) {
+					break
+				}
+			}
+			// PostRun
+			if rnr, ok := inf.(PostRunner); ok {
+				newCtx, err := rnr.PostRun(ctx, err)
+				if newCtx != nil {
+					ctx = newCtx
+				}
+				if err != nil && !(strategy == OnErrorContinue) {
+					break
+				}
+			}
+		}
+	}
+	// check for error and strategy
+	if err != nil && strategy == OnErrorBreak {
+		return err
+	}
+	// PersistentPostRun
+	for _, rnr := range pPostRunners {
+		newCtx, err := rnr.PersistentPostRun(ctx, err)
+		if newCtx != nil {
+			ctx = newCtx
+		}
+		if err != nil && strategy == OnErrorPostRunners {
+			return err
+		}
+	}
+	return err
 }
 
 func RegisterEnum(enmap interface{}) {
