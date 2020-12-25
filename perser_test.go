@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -159,5 +160,68 @@ func TestUint(t *testing.T) {
 
 	if args.Uint64 != 10200300 {
 		t.Fatal("args.Uint64 != 10200300")
+	}
+}
+
+type SubCmdA struct {
+	Name string
+}
+
+func (c *SubCmdA) Run(ctx context.Context, lastErr error) (context.Context, error) {
+	fmt.Println("c:", c)
+	fmt.Printf("SubCmdA %v %p\n", c.Name, ctx)
+	return nil, nil
+}
+
+type SubCmdB struct {
+	Num int
+}
+
+func (c *SubCmdB) Run(ctx context.Context, lastErr error) (context.Context, error) {
+	fmt.Printf("SubCmdB %v %p\n", c.Num, ctx)
+	return nil, nil
+}
+
+type RootCmd struct {
+	SubA *SubCmdA
+	SubB *SubCmdB
+}
+
+func (c *RootCmd) PersistentPreRun(ctx context.Context, lastErr error) (context.Context, error) {
+	fmt.Printf("RootCmd %p\n", ctx)
+	return context.TODO(), nil
+}
+
+func TestExecute(t *testing.T) {
+	a := &RootCmd{}
+
+	NewRootCommand("root", a)
+
+	err := Eval([]string{"root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecuteSubA(t *testing.T) {
+	a := &RootCmd{}
+
+	NewRootCommand("root", a)
+
+	err := Eval([]string{"root", "suba", "--name", "efterpi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println("a", a, a.SubA, a.SubB)
+
+	err = Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
 }

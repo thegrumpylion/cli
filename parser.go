@@ -12,19 +12,28 @@ import (
 	"github.com/golang/protobuf/ptypes/any"
 )
 
-// ArgCase
-type ArgCase uint32
+// ParserOption option type for Parser
+type ParserOption func(p *Parser)
 
-const (
-	CaseLower ArgCase = iota
-	CaseCamel
-	CaseCapital
-)
+// WithCase set the parser case. default is CaseCamelLower
+func WithCase(c ArgCase) ParserOption {
+	return func(p *Parser) {
+		p.caseFunc = caseFuncs[c]
+	}
+}
 
-var ErrCommandNotFound = func(cmd string) error { return fmt.Errorf("command not found: %s", cmd) }
-var ErrNoSuchFlag = func(flg string) error { return fmt.Errorf("no such flag: %s", flg) }
-var ErrInvalidFlag = func(flg string) error { return fmt.Errorf("invalid flag: %s", flg) }
-var ErrInvalidValue = func(val, flg string) error { return fmt.Errorf("invalid value: %s for flag: %s", val, flg) }
+// WithOnErrorStrategy sets the execution strategy for handling errors
+func WithOnErrorStrategy(str OnErrorStrategy) ParserOption {
+	return func(p *Parser) {
+		p.strategy = str
+	}
+}
+
+func WithGlobalArgsPropagationEnabled() ParserOption {
+	return func(p *Parser) {
+		p.globalsPropagate = true
+	}
+}
 
 var defaultParser = NewParser()
 
@@ -34,20 +43,30 @@ type iface struct {
 }
 
 type Parser struct {
-	strict   bool
-	roots    []reflect.Value
-	cmds     map[string]*command
-	enums    map[reflect.Type]map[string]interface{}
-	ifaces   map[string]*iface
-	execTree []interface{}
+	strict           bool
+	roots            []reflect.Value
+	cmds             map[string]*command
+	enums            map[reflect.Type]map[string]interface{}
+	ifaces           map[string]*iface
+	execTree         []interface{}
+	globalsPropagate bool
+	strategy         OnErrorStrategy
+	caseFunc         func(string) string
 }
 
-func NewParser() *Parser {
-	return &Parser{
+func NewParser(opts ...ParserOption) *Parser {
+	p := &Parser{
 		cmds:   map[string]*command{},
 		enums:  map[reflect.Type]map[string]interface{}{},
 		ifaces: map[string]*iface{},
 	}
+	for _, o := range opts {
+		o(p)
+	}
+	if p.caseFunc == nil {
+		p.caseFunc = caseFuncs[CaseCamelLower]
+	}
+	return p
 }
 
 func (p *Parser) addRoot(in interface{}) *path {
@@ -57,18 +76,18 @@ func (p *Parser) addRoot(in interface{}) *path {
 	}
 }
 
-func NewRootCommand(name string, args ...interface{}) *command {
-	return defaultParser.NewRootCommand(name, args...)
+func NewRootCommand(name string, arg interface{}) *command {
+	return defaultParser.NewRootCommand(name, arg)
 }
 
-func (p *Parser) NewRootCommand(name string, args ...interface{}) *command {
+func (p *Parser) NewRootCommand(name string, arg interface{}) *command {
 	c := &command{
 		parser: p,
 		name:   name,
 		subcmd: map[string]*command{},
 		args:   map[string]*argument{},
 	}
-	c.Parse(args...)
+	c.parse(arg)
 	p.cmds[name] = c
 	return c
 }
@@ -77,9 +96,35 @@ func Eval(args []string) error {
 	return defaultParser.Eval(args)
 }
 
+type argSet map[*argument]struct{}
+
+func (s argSet) Insert(a *argument) bool {
+	if _, ok := s[a]; ok {
+		return false
+	}
+	s[a] = struct{}{}
+	return true
+}
+
+func (s argSet) Delete(a *argument) bool {
+	if _, ok := s[a]; !ok {
+		return false
+	}
+	delete(s, a)
+	return true
+}
+
+func (s argSet) List() (args []*argument) {
+	for a := range s {
+		args = append(args, a)
+	}
+	return
+}
+
 func (p *Parser) Eval(args []string) error {
 
-	currentCmdArgs := map[*argument]struct{}{}
+	currentCmdArgs := argSet{}
+	globalArgs := argSet{}
 	arrays := map[*argument][]string{}
 
 	c, ok := p.cmds[args[0]]
@@ -91,8 +136,13 @@ func (p *Parser) Eval(args []string) error {
 		}
 	}
 
-	for _, v := range c.args {
-		currentCmdArgs[v] = struct{}{}
+	p.execTree = append(p.execTree, c.path.Init())
+
+	for _, a := range c.args {
+		currentCmdArgs.Insert(a)
+		if p.globalsPropagate && a.global {
+			globalArgs.Insert(a)
+		}
 	}
 
 	args = args[1:]
@@ -119,7 +169,10 @@ func (p *Parser) Eval(args []string) error {
 					return ErrCommandNotFound(arg)
 				}
 				c = cc
+				p.execTree = append(p.execTree, c.path.Init())
+				continue
 			}
+			positionals = append(positionals, arg)
 		}
 
 		if arg == "-h" || arg == "--help" {
@@ -152,7 +205,7 @@ func (p *Parser) Eval(args []string) error {
 			return ErrNoSuchFlag(arg)
 		}
 
-		delete(currentCmdArgs, a)
+		currentCmdArgs.Delete(a)
 
 		if a.enum {
 			if val == "" {
@@ -226,7 +279,17 @@ const (
 	OnErrorContinue
 )
 
-func (p *Parser) Execute(ctx context.Context, strategy OnErrorStrategy) error {
+func Execute(ctx context.Context) error {
+	return defaultParser.Execute(ctx)
+}
+
+type lastErrorKey struct{}
+
+func LastErrorFromContext(ctx context.Context) error {
+	return ctx.Value(lastErrorKey{}).(error)
+}
+
+func (p *Parser) Execute(ctx context.Context) error {
 
 	var err error
 	lastCmd := len(p.execTree) - 1
@@ -240,59 +303,50 @@ func (p *Parser) Execute(ctx context.Context, strategy OnErrorStrategy) error {
 		}
 		// PersistentPreRun
 		if rnr, ok := inf.(PersistentPreRunner); ok {
-			newCtx, err := rnr.PersistentPreRun(ctx, err)
-			if newCtx != nil {
-				ctx = newCtx
-			}
-			if err != nil && !(strategy == OnErrorContinue) {
-				break
+			err = rnr.PersistentPreRun(ctx, err)
+			if err != nil {
+				if !(p.strategy == OnErrorContinue) {
+					break
+				}
+				ctx = context.WithValue(ctx, lastErrorKey{}, err)
 			}
 		}
 		if i == lastCmd {
 			// PreRun
 			if rnr, ok := inf.(PreRunner); ok {
-				newCtx, err := rnr.PreRun(ctx, err)
-				if newCtx != nil {
-					ctx = newCtx
-				}
-				if err != nil && !(strategy == OnErrorContinue) {
+				err = rnr.PreRun(ctx, err)
+				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
 			}
 			// Run
 			if rnr, ok := inf.(Runner); ok {
-				newCtx, err := rnr.Run(ctx, err)
-				if newCtx != nil {
-					ctx = newCtx
-				}
-				if err != nil && !(strategy == OnErrorContinue) {
+				err = rnr.Run(ctx, err)
+				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
 			}
 			// PostRun
 			if rnr, ok := inf.(PostRunner); ok {
-				newCtx, err := rnr.PostRun(ctx, err)
-				if newCtx != nil {
-					ctx = newCtx
-				}
-				if err != nil && !(strategy == OnErrorContinue) {
+				err = rnr.PostRun(ctx, err)
+				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
 			}
 		}
 	}
 	// check for error and strategy
-	if err != nil && strategy == OnErrorBreak {
+	if err != nil && p.strategy == OnErrorBreak {
 		return err
 	}
 	// PersistentPostRun
 	for _, rnr := range pPostRunners {
-		newCtx, err := rnr.PersistentPostRun(ctx, err)
-		if newCtx != nil {
-			ctx = newCtx
-		}
-		if err != nil && strategy == OnErrorPostRunners {
-			return err
+		err = rnr.PersistentPostRun(ctx, err)
+		if err != nil {
+			if p.strategy == OnErrorPostRunners {
+				return err
+			}
+			ctx = context.WithValue(ctx, lastErrorKey{}, err)
 		}
 	}
 	return err
@@ -375,17 +429,14 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 
 		// get and parse cli tag
 		var tag *clitag
-		if tg, ok := f.Tag.Lookup("cli"); ok {
-			if tg == "-" {
-				continue
-			}
-			tag = parseCliTag(tg)
-		} else {
-			tag = parseCliTag("")
+		tg := f.Tag.Get("cli")
+		if tg == "-" {
+			continue
 		}
+		tag = parseCliTag(tg)
 
 		// compute arg name
-		name := strings.ToLower(fn)
+		name := p.caseFunc(fn)
 		if tag.long != "" {
 			name = tag.long
 		}
@@ -413,7 +464,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 				continue
 			}
 			// parse struct as a command
-			c.addSubcmd(name, ft, spth)
+			c.addSubcmd(strings.ToLower(name), ft, spth)
 			continue
 		}
 
@@ -446,11 +497,9 @@ func (p *Parser) validateFlag(flg string) (valid, short bool, arg string) {
 		return false, false, ""
 	}
 	arg = strings.TrimLeft(flg, "-")
-	arg = strings.ToLower(arg)
 	return true, false, arg
 }
 
-// isFlag returns true if a token is a flag such as "-v" or "--user" but not "-" or "--"
 func isFlag(s string) bool {
 	return strings.HasPrefix(s, "-") && strings.TrimLeft(s, "-") != ""
 }
