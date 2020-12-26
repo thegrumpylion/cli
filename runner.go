@@ -7,23 +7,23 @@ import (
 )
 
 type Runner interface {
-	Run(ctx context.Context, lastErr error) error
+	Run(ctx context.Context) error
 }
 
 type PreRunner interface {
-	PreRun(ctx context.Context, lastErr error) error
+	PreRun(ctx context.Context) error
 }
 
 type PersistentPreRunner interface {
-	PersistentPreRun(ctx context.Context, lastErr error) error
+	PersistentPreRun(ctx context.Context) error
 }
 
 type PostRunner interface {
-	PostRun(ctx context.Context, lastErr error) error
+	PostRun(ctx context.Context) error
 }
 
 type PersistentPostRunner interface {
-	PersistentPostRun(ctx context.Context, lastErr error) error
+	PersistentPostRun(ctx context.Context) error
 }
 
 var runnerType = reflect.TypeOf((*Runner)(nil)).Elem()

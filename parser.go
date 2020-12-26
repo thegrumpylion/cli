@@ -78,11 +78,11 @@ func (p *Parser) addRoot(in interface{}) *path {
 	}
 }
 
-func NewRootCommand(name string, arg interface{}) *command {
-	return defaultParser.NewRootCommand(name, arg)
+func NewRootCommand(name string, arg interface{}) {
+	defaultParser.NewRootCommand(name, arg)
 }
 
-func (p *Parser) NewRootCommand(name string, arg interface{}) *command {
+func (p *Parser) NewRootCommand(name string, arg interface{}) {
 	c := &command{
 		parser: p,
 		name:   name,
@@ -91,7 +91,6 @@ func (p *Parser) NewRootCommand(name string, arg interface{}) *command {
 	}
 	c.parse(arg)
 	p.cmds[name] = c
-	return c
 }
 
 func Eval(args []string) error {
@@ -138,7 +137,7 @@ func (p *Parser) Eval(args []string) error {
 		}
 	}
 
-	p.execTree = append(p.execTree, c.path.Init())
+	p.execTree = append(p.execTree, c.path.Get())
 
 	for _, a := range c.args {
 		currentCmdArgs.Insert(a)
@@ -171,7 +170,7 @@ func (p *Parser) Eval(args []string) error {
 					return ErrCommandNotFound(arg)
 				}
 				c = cc
-				p.execTree = append(p.execTree, c.path.Init())
+				p.execTree = append(p.execTree, c.path.Get())
 				continue
 			}
 			positionals = append(positionals, arg)
@@ -186,6 +185,7 @@ func (p *Parser) Eval(args []string) error {
 		}
 
 		val := ""
+		// get flag and value in case --flag=value
 		if i := strings.Index(arg, "="); i != -1 {
 			arg = arg[:i]
 			val = arg[i+1:]
@@ -209,16 +209,7 @@ func (p *Parser) Eval(args []string) error {
 
 		currentCmdArgs.Delete(a)
 
-		if a.enum {
-			if val == "" {
-				val = args[i+1]
-			}
-			em := p.enums[a.typ]
-			a.setValue(em[strings.ToLower(val)])
-			i++
-			continue
-		}
-
+		// handle arrays and slices
 		if isArr, l := a.isArray(); isArr {
 			if a.separate {
 				if _, ok := arrays[a]; !ok {
@@ -257,13 +248,29 @@ func (p *Parser) Eval(args []string) error {
 			}
 		}
 
-		if !a.isBool() {
-			if val == "" {
-				val = args[i+1]
-				i++
-			}
+		// get the value in case --flag value
+		if !a.isBool() && val == "" {
+			val = args[i+1]
+			i++
 		}
 
+		// handle encoding.TextUnmarshaler
+		if tum, ok := a.path.Get().(encoding.TextUnmarshaler); ok {
+			if err := tum.UnmarshalText([]byte(val)); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// handle enum
+		if a.enum {
+			em := p.enums[a.typ]
+			a.setValue(em[strings.ToLower(val)])
+			i++
+			continue
+		}
+
+		// handle scalar
 		if err := a.setScalarValue(val); err != nil {
 			return err
 		}
@@ -307,13 +314,12 @@ func (p *Parser) Execute(ctx context.Context) error {
 
 	for i, inf := range p.execTree {
 		// PersistentPostRun pushed on a stack to run in a reverse order
-		// check
 		if rnr, ok := inf.(PersistentPostRunner); ok {
 			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
 		}
 		// PersistentPreRun
 		if rnr, ok := inf.(PersistentPreRunner); ok {
-			err = rnr.PersistentPreRun(ctx, err)
+			err = rnr.PersistentPreRun(ctx)
 			if err != nil {
 				if !(p.strategy == OnErrorContinue) {
 					break
@@ -324,21 +330,21 @@ func (p *Parser) Execute(ctx context.Context) error {
 		if i == lastCmd {
 			// PreRun
 			if rnr, ok := inf.(PreRunner); ok {
-				err = rnr.PreRun(ctx, err)
+				err = rnr.PreRun(ctx)
 				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
 			}
 			// Run
 			if rnr, ok := inf.(Runner); ok {
-				err = rnr.Run(ctx, err)
+				err = rnr.Run(ctx)
 				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
 			}
 			// PostRun
 			if rnr, ok := inf.(PostRunner); ok {
-				err = rnr.PostRun(ctx, err)
+				err = rnr.PostRun(ctx)
 				if err != nil && !(p.strategy == OnErrorContinue) {
 					break
 				}
@@ -351,7 +357,7 @@ func (p *Parser) Execute(ctx context.Context) error {
 	}
 	// PersistentPostRun
 	for _, rnr := range pPostRunners {
-		err = rnr.PersistentPostRun(ctx, err)
+		err = rnr.PersistentPostRun(ctx)
 		if err != nil {
 			if p.strategy == OnErrorPostRunners {
 				return err
@@ -429,7 +435,6 @@ func (p *Parser) RegisterInterface(id string, infmap interface{}, f func(in, out
 var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
 func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, isArg bool, globals *strset.Set) {
-	ot := t
 	if isPtr(t) {
 		t = t.Elem()
 	}
@@ -459,7 +464,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 
 		spth := pth.Subpath(fn)
 
-		if isStruct(ft) && !ot.Implements(textUnmarshaler) {
+		if isStruct(ft) && !ft.Implements(textUnmarshaler) {
 			// embedded struct parse as args of parent
 			if f.Anonymous {
 				p.walkStruct(c, ft, spth, pfx, isArg, globals)

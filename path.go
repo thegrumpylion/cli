@@ -19,7 +19,7 @@ func (p *path) Subpath(name string) *path {
 	}
 }
 
-func (p *path) Init() interface{} {
+func (p *path) Get() interface{} {
 	v := *p.root
 	for _, s := range p.path {
 		if v.Kind() == reflect.Ptr {

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -34,9 +36,9 @@ func TestParse(t *testing.T) {
 		Cmd      *subCmd
 	}{}
 
-	cmd := NewRootCommand("test", args)
+	NewRootCommand("test", args)
 
-	fmt.Println(cmd)
+	fmt.Println(defaultParser.cmds["root"])
 }
 
 func TestEnumRegistration(t *testing.T) {
@@ -263,5 +265,42 @@ func TestExecuteSubA(t *testing.T) {
 	err = Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+type tUm struct {
+	Key   string
+	Value string
+}
+
+func (t *tUm) UnmarshalText(b []byte) error {
+	s := string(b)
+	i := strings.Index(s, ":")
+	if i == -1 {
+		return errors.New("invalid")
+	}
+	t.Key = s[:i]
+	t.Value = s[i+1:]
+	return nil
+}
+
+func TestTextUnmarshaler(t *testing.T) {
+	args := &struct {
+		Pair *tUm
+	}{}
+
+	NewRootCommand("root", args)
+
+	err := Eval([]string{"root", "--pair", "theKey:theValue"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if args.Pair.Key != "theKey" {
+		t.Fatal("key != theKey ==", args.Pair.Key)
+	}
+
+	if args.Pair.Value != "theValue" {
+		t.Fatal("value != theValue ==", args.Pair.Value)
 	}
 }
