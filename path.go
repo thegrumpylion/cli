@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 type path struct {
@@ -33,105 +36,97 @@ func (p *path) Init() interface{} {
 	return v.Interface()
 }
 
-func (p *path) Set(in interface{}) {
-	v := *p.root
-	for _, s := range p.path {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
+func (p *path) Set(i interface{}) error {
+	return func() error {
+		if r := recover(); r != nil {
+			return fmt.Errorf("error: %v", r)
 		}
-		v = v.FieldByName(s)
-	}
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
-	v.Set(reflect.ValueOf(in))
-}
-
-func (p *path) SetFloat(in float64) {
-	v := *p.root
-	for _, s := range p.path {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-		v = v.FieldByName(s)
-	}
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
-	v.SetFloat(in)
-}
-
-func (p *path) SetInt(in int64) {
-	v := *p.root
-	for _, s := range p.path {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-		v = v.FieldByName(s)
-	}
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
-	v.SetInt(in)
-}
-
-func (p *path) SetUint(in uint64) {
-	v := *p.root
-	for _, s := range p.path {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-		v = v.FieldByName(s)
-	}
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
-	v.SetUint(in)
-}
-
-func (p *path) Get() interface{} {
-	v := *p.root
-	for _, s := range p.path {
-		if !v.IsValid() {
-			return nil
-		}
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		v = v.FieldByName(s)
-	}
-	if !v.IsValid() {
+		p.value().Set(reflect.ValueOf(i))
 		return nil
+	}()
+}
+
+func (p *path) SetScalar(s string) error {
+	return setScalarValue(p.value(), s)
+}
+
+func (p *path) SetSlice(arr []string) error {
+	v := p.value()
+	for _, s := range arr {
+		e := reflect.New(v.Type().Elem()).Elem()
+		if err := setScalarValue(e, s); err != nil {
+			return err
+		}
+		v.Set(reflect.Append(v, e))
 	}
-	// if v.Kind() == reflect.Ptr {
-	// 	v = v.Elem()
-	// }
-	// if !v.IsValid() {
-	// 	return nil
-	// }
-	return v.Interface()
+	return nil
+}
+
+func (p *path) SetArray(arr []string) error {
+	v := p.value()
+	for i, s := range arr {
+		e := reflect.New(v.Type().Elem()).Elem()
+		if err := setScalarValue(e, s); err != nil {
+			return err
+		}
+		v.Index(i).Set(e)
+	}
+	return nil
+}
+
+func (p *path) value() reflect.Value {
+	v := *p.root
+	for _, s := range p.path {
+		if v.Kind() == reflect.Ptr {
+			if v.IsNil() {
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+			v = v.Elem()
+		}
+		v = v.FieldByName(s)
+	}
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+	return v
+}
+
+func setScalarValue(v reflect.Value, s string) error {
+	if isPtr(v.Type()) {
+		v = v.Elem()
+	}
+	switch {
+	case isBool(v.Type()):
+		if s == "" || strings.ToLower(s) == "true" {
+			v.SetBool(true)
+		} else if strings.ToLower(s) == "false" {
+			v.SetBool(false)
+		} else {
+			return ErrInvalidValue(s, "")
+		}
+	case isString(v.Type()):
+		v.SetString(s)
+	case isFloat(v.Type()):
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return err
+		}
+		v.SetFloat(f)
+	case isInt(v.Type()):
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return err
+		}
+		v.SetInt(i)
+	case isUint(v.Type()):
+		ui, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return err
+		}
+		v.SetUint(ui)
+	}
+	return nil
 }

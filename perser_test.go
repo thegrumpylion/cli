@@ -163,23 +163,63 @@ func TestUint(t *testing.T) {
 	}
 }
 
+func TestSliceArg(t *testing.T) {
+	args := &struct {
+		Names []string
+	}{}
+
+	NewRootCommand("root", args)
+
+	err := Eval([]string{"root", "--names", "maria", "andreas", "giannis"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals := []string{"maria", "andreas", "giannis"}
+	for i, n := range vals {
+		if args.Names[i] != n {
+			t.Fatalf("%s not %s\n", args.Names[i], n)
+		}
+	}
+}
+
+func TestArrayArg(t *testing.T) {
+	args := &struct {
+		Names [3]string
+	}{}
+
+	NewRootCommand("root", args)
+
+	err := Eval([]string{"root", "--names", "maria", "andreas", "giannis"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals := []string{"maria", "andreas", "giannis"}
+	for i, n := range vals {
+		if args.Names[i] != n {
+			t.Fatalf("%s not %s\n", args.Names[i], n)
+		}
+	}
+}
+
 type SubCmdA struct {
 	Name string
 }
 
-func (c *SubCmdA) Run(ctx context.Context, lastErr error) (context.Context, error) {
+func (c *SubCmdA) Run(ctx context.Context) error {
 	fmt.Println("c:", c)
 	fmt.Printf("SubCmdA %v %p\n", c.Name, ctx)
-	return nil, nil
+	return nil
 }
 
 type SubCmdB struct {
 	Num int
 }
 
-func (c *SubCmdB) Run(ctx context.Context, lastErr error) (context.Context, error) {
+func (c *SubCmdB) Run(ctx context.Context) error {
 	fmt.Printf("SubCmdB %v %p\n", c.Num, ctx)
-	return nil, nil
+	return nil
 }
 
 type RootCmd struct {
@@ -187,9 +227,9 @@ type RootCmd struct {
 	SubB *SubCmdB
 }
 
-func (c *RootCmd) PersistentPreRun(ctx context.Context, lastErr error) (context.Context, error) {
+func (c *RootCmd) PersistentPreRun(ctx context.Context) error {
 	fmt.Printf("RootCmd %p\n", ctx)
-	return context.TODO(), nil
+	return nil
 }
 
 func TestExecute(t *testing.T) {

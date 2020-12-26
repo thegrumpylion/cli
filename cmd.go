@@ -1,6 +1,10 @@
 package cli
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/scylladb/go-set/strset"
+)
 
 type command struct {
 	path   *path
@@ -20,7 +24,7 @@ func (c *command) parse(arg interface{}) {
 	}
 	p := c.parser.addRoot(arg)
 	c.path = p
-	c.parser.walkStruct(c, t, p, "", false)
+	c.parser.walkStruct(c, t, p, "", false, strset.New())
 }
 
 func (c *command) addSubcmd(name string, t reflect.Type, p *path) {
@@ -31,6 +35,6 @@ func (c *command) addSubcmd(name string, t reflect.Type, p *path) {
 		subcmd: map[string]*command{},
 		args:   map[string]*argument{},
 	}
-	c.parser.walkStruct(sc, t, p, "", false)
+	c.parser.walkStruct(sc, t, p, "", false, strset.New())
 	c.subcmd[name] = sc
 }

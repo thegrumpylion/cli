@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/any"
+	"github.com/scylladb/go-set/strset"
 )
 
 // ParserOption option type for Parser
@@ -29,9 +31,9 @@ func WithOnErrorStrategy(str OnErrorStrategy) ParserOption {
 	}
 }
 
-func WithGlobalArgsPropagationEnabled() ParserOption {
+func WithGlobalArgsEnabled() ParserOption {
 	return func(p *Parser) {
-		p.globalsPropagate = true
+		p.globalsEnabled = true
 	}
 }
 
@@ -43,15 +45,15 @@ type iface struct {
 }
 
 type Parser struct {
-	strict           bool
-	roots            []reflect.Value
-	cmds             map[string]*command
-	enums            map[reflect.Type]map[string]interface{}
-	ifaces           map[string]*iface
-	execTree         []interface{}
-	globalsPropagate bool
-	strategy         OnErrorStrategy
-	caseFunc         func(string) string
+	strict         bool
+	roots          []reflect.Value
+	cmds           map[string]*command
+	enums          map[reflect.Type]map[string]interface{}
+	ifaces         map[string]*iface
+	execTree       []interface{}
+	globalsEnabled bool
+	strategy       OnErrorStrategy
+	caseFunc       func(string) string
 }
 
 func NewParser(opts ...ParserOption) *Parser {
@@ -140,7 +142,7 @@ func (p *Parser) Eval(args []string) error {
 
 	for _, a := range c.args {
 		currentCmdArgs.Insert(a)
-		if p.globalsPropagate && a.global {
+		if p.globalsEnabled && a.global {
 			globalArgs.Insert(a)
 		}
 	}
@@ -212,7 +214,7 @@ func (p *Parser) Eval(args []string) error {
 				val = args[i+1]
 			}
 			em := p.enums[a.typ]
-			a.path.Set(em[strings.ToLower(val)])
+			a.setValue(em[strings.ToLower(val)])
 			i++
 			continue
 		}
@@ -264,6 +266,14 @@ func (p *Parser) Eval(args []string) error {
 
 		if err := a.setScalarValue(val); err != nil {
 			return err
+		}
+	}
+
+	if len(arrays) != 0 {
+		for a, v := range arrays {
+			if err := a.setArrayValue(v); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -416,7 +426,10 @@ func (p *Parser) RegisterInterface(id string, infmap interface{}, f func(in, out
 	}
 }
 
-func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, isArg bool) {
+var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+
+func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, isArg bool, globals *strset.Set) {
+	ot := t
 	if isPtr(t) {
 		t = t.Elem()
 	}
@@ -446,26 +459,34 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 
 		spth := pth.Subpath(fn)
 
-		if isStruct(ft) {
+		if isStruct(ft) && !ot.Implements(textUnmarshaler) {
 			// embedded struct parse as args of parent
 			if f.Anonymous {
-				p.walkStruct(c, ft, spth, pfx, isArg)
+				p.walkStruct(c, ft, spth, pfx, isArg, globals)
 				continue
 			}
 			// we know is an arg so use the name as prefix
 			if isArg {
-				p.walkStruct(c, ft, spth, name, isArg)
+				p.walkStruct(c, ft, spth, name, isArg, globals)
 				continue
 			}
 			// is a ptr to struct but isArg in tag is set or
 			// is normal struct so this is an arg
 			if tag.isArg || !isPtr(ft) {
-				p.walkStruct(c, ft, spth, name, true)
+				p.walkStruct(c, ft, spth, name, true, globals)
 				continue
 			}
 			// parse struct as a command
 			c.addSubcmd(strings.ToLower(name), ft, spth)
 			continue
+		}
+
+		// check for global args propagation collision
+		if p.globalsEnabled && tag.global {
+			if globals.Has(name) {
+				panic("global args propagation collition")
+			}
+			globals.Add(name)
 		}
 
 		a := &argument{

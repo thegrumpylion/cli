@@ -2,14 +2,12 @@ package cli
 
 import (
 	"reflect"
-	"strconv"
-	"strings"
 )
 
 type argument struct {
 	path       *path
 	typ        reflect.Type
-	def        reflect.Value
+	def        string
 	long       string
 	short      string
 	help       string
@@ -37,35 +35,17 @@ func (a *argument) isArray() (bool, int) {
 }
 
 func (a *argument) setScalarValue(val string) error {
-	switch {
-	case isBool(a.typ):
-		if val == "" || strings.ToLower(val) == "true" {
-			a.path.Set(true)
-		} else if strings.ToLower(val) == "false" {
-			a.path.Set(false)
-		} else {
-			return ErrInvalidValue(val, a.long)
-		}
-	case isString(a.typ):
-		a.path.Set(val)
-	case isFloat(a.typ):
-		f, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			return err
-		}
-		a.path.SetFloat(f)
-	case isInt(a.typ):
-		i, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		a.path.SetInt(i)
-	case isUint(a.typ):
-		ui, err := strconv.ParseUint(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		a.path.SetUint(ui)
+	return a.path.SetScalar(val)
+}
+
+func (a *argument) setArrayValue(arr []string) error {
+	_, l := a.isArray()
+	if l > 0 {
+		return a.path.SetArray(arr)
 	}
-	return nil
+	return a.path.SetSlice(arr)
+}
+
+func (a *argument) setValue(val interface{}) error {
+	return a.path.Set(val)
 }
