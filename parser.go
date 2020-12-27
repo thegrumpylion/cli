@@ -56,6 +56,7 @@ type Parser struct {
 	caseFunc       func(string) string
 }
 
+// NewParser create new parser
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
 		cmds:   map[string]*command{},
@@ -78,10 +79,12 @@ func (p *Parser) addRoot(in interface{}) *path {
 	}
 }
 
+// NewRootCommand add new root command to defaultParser
 func NewRootCommand(name string, arg interface{}) {
 	defaultParser.NewRootCommand(name, arg)
 }
 
+// NewRootCommand add new root command to this parser
 func (p *Parser) NewRootCommand(name string, arg interface{}) {
 	c := &command{
 		parser: p,
@@ -93,6 +96,7 @@ func (p *Parser) NewRootCommand(name string, arg interface{}) {
 	p.cmds[name] = c
 }
 
+// Eval marshal string args to struct using the defaultParser
 func Eval(args []string) error {
 	return defaultParser.Eval(args)
 }
@@ -122,6 +126,7 @@ func (s argSet) List() (args []*argument) {
 	return
 }
 
+// Eval marshal string args to struct
 func (p *Parser) Eval(args []string) error {
 
 	currentCmdArgs := argSet{}
@@ -331,22 +336,31 @@ func (p *Parser) Execute(ctx context.Context) error {
 			// PreRun
 			if rnr, ok := inf.(PreRunner); ok {
 				err = rnr.PreRun(ctx)
-				if err != nil && !(p.strategy == OnErrorContinue) {
-					break
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
 				}
 			}
 			// Run
 			if rnr, ok := inf.(Runner); ok {
 				err = rnr.Run(ctx)
-				if err != nil && !(p.strategy == OnErrorContinue) {
-					break
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
 				}
 			}
 			// PostRun
 			if rnr, ok := inf.(PostRunner); ok {
 				err = rnr.PostRun(ctx)
-				if err != nil && !(p.strategy == OnErrorContinue) {
-					break
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
 				}
 			}
 		}
