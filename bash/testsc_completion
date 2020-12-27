@@ -1,0 +1,15 @@
+#/usr/bin/env bash
+
+_testsc_completions()
+{
+    # echo $COMP_CWORD
+    # echo $COMP_LINE
+    # echo $COMP_POINT
+    # echo $COMP_TYPE
+    # echo $COMP_KEY
+    # echo $COMP_WORDBREAKS
+    # echo ${COMP_WORDS[@]}
+    COMPREPLY=($(go run complete.go ${COMP_CWORD} ${COMP_WORDS[@]}))
+}
+
+complete -F _testsc_completions ./testsc
