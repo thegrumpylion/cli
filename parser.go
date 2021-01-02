@@ -215,13 +215,13 @@ func (p *Parser) Eval(args []string) error {
 		currentCmdArgs.Delete(a)
 
 		// handle arrays and slices
-		if isArr, l := a.isArray(); isArr {
+		if a.isArray || a.isSlice {
 			if a.separate {
 				if _, ok := arrays[a]; !ok {
 					arrays[a] = []string{}
 				}
 				// if is array and overflows
-				if l > 0 && len(arrays[a]) == l {
+				if a.isArray && len(arrays[a]) == a.arrayLen {
 					return errors.New("array over capacity")
 				}
 				if val == "" {
@@ -233,8 +233,8 @@ func (p *Parser) Eval(args []string) error {
 			}
 			// clear array
 			arrays[a] = []string{}
-			if l > 0 {
-				for j := 0; j < l; j++ {
+			if a.isArray {
+				for j := 0; j < a.arrayLen; j++ {
 					val = args[i+1]
 					if isFlag(val) {
 						continue
@@ -496,14 +496,14 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 				continue
 			}
 			// parse struct as a command
-			c.addSubcmd(strings.ToLower(name), ft, spth)
+			c.addSubcmd(strings.ToLower(fn), ft, spth)
 			continue
 		}
 
 		// check for global args propagation collision
 		if p.globalsEnabled && tag.global {
 			if globals.Has(name) {
-				panic("global args propagation collition")
+				panic("global args propagation collision")
 			}
 			globals.Add(name)
 		}
@@ -515,14 +515,41 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 			help:     f.Tag.Get("help"),
 			required: tag.required,
 		}
+		c.args[name] = a
+
+		if isInterface(ft) {
+			if tag.iface == "" {
+				panic("no iface name configured for " + ft.Name())
+			}
+			ifc, ok := p.ifaces[tag.iface]
+			if !ok {
+				panic("iface not registered: " + tag.iface)
+			}
+			fmt.Printf("%#v\n", ifc.m)
+			continue
+		}
+
+		// get the underlaying type if pointer
+		if isPtr(ft) {
+			ft = ft.Elem()
+		}
+
+		if isArray(ft) {
+			switch ft.Kind() {
+			case reflect.Array:
+				a.isArray = true
+				a.arrayLen = ft.Len()
+			case reflect.Slice:
+				a.isSlice = true
+				a.arrayLen = -1
+			}
+		}
 
 		if isInt(ft) || isUint(ft) {
 			if _, ok := p.enums[ft]; ok {
 				a.enum = true
 			}
 		}
-
-		c.args[name] = a
 	}
 }
 

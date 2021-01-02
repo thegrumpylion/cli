@@ -17,21 +17,13 @@ type argument struct {
 	separate   bool
 	enum       bool
 	iface      bool
+	isSlice    bool
+	isArray    bool
+	arrayLen   int
 }
 
 func (a *argument) isBool() bool {
 	return a.typ.Kind() == reflect.Bool
-}
-
-func (a *argument) isArray() (bool, int) {
-	switch a.typ.Kind() {
-	case reflect.Array:
-		return true, a.typ.Len()
-	case reflect.Slice:
-		return true, -1
-	default:
-		return false, 0
-	}
 }
 
 func (a *argument) setScalarValue(val string) error {
@@ -39,8 +31,7 @@ func (a *argument) setScalarValue(val string) error {
 }
 
 func (a *argument) setArrayValue(arr []string) error {
-	_, l := a.isArray()
-	if l > 0 {
+	if a.isArray {
 		return a.path.SetArray(arr)
 	}
 	return a.path.SetSlice(arr)

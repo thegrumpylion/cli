@@ -36,9 +36,41 @@ func TestParse(t *testing.T) {
 		Cmd      *subCmd
 	}{}
 
-	NewRootCommand("test", args)
+	strargs := []string{
+		"str",
+		"int",
+		"bool",
+		"float",
+		"strPtr",
+		"intPtr",
+		"boolPtr",
+		"floatPtr",
+		"embStr",
+		"embInt",
+		"embBool",
+		"embFloat",
+	}
 
-	fmt.Println(defaultParser.cmds["root"])
+	strcmds := []string{
+		"cmd",
+		"embcmd",
+	}
+
+	NewRootCommand("root", args)
+
+	root := defaultParser.cmds["root"]
+
+	for _, sa := range strargs {
+		if _, ok := root.args[sa]; !ok {
+			t.Fatalf("arg %s not found\n", sa)
+		}
+	}
+
+	for _, sc := range strcmds {
+		if _, ok := root.subcmd[sc]; !ok {
+			t.Fatalf("cmd %s not found\n", sc)
+		}
+	}
 }
 
 func TestEnumRegistration(t *testing.T) {
@@ -303,4 +335,33 @@ func TestTextUnmarshaler(t *testing.T) {
 	if args.Pair.Value != "theValue" {
 		t.Fatal("value != theValue ==", args.Pair.Value)
 	}
+}
+
+func TestInterface(t *testing.T) {
+	type MuhEnm int
+
+	const (
+		Ena MuhEnm = iota + 1
+		Dio
+		Tria
+	)
+
+	enumMap := map[string]MuhEnm{
+		"ena":  Ena,
+		"dio":  Dio,
+		"tria": Tria,
+	}
+
+	RegisterEnum(enumMap)
+
+	RegisterInterface("test", map[MuhEnm]interface{}{
+		Ena: 42,
+	}, nil)
+
+	args := &struct {
+		Enum MuhEnm
+		TheI interface{} `cli:"iface:test"`
+	}{}
+
+	NewRootCommand("root", args)
 }

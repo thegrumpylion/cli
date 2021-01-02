@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"reflect"
 	"strings"
 )
 
@@ -21,15 +20,33 @@ type clitag struct {
 
 func parseCliTag(s string) *clitag {
 	tag := &clitag{}
-	if s != "" {
-		val := reflect.ValueOf(tag).Elem()
-		parts := strings.Split(s, ",")
-		for _, p := range parts {
-			if i := strings.Index(p, "="); i != -1 {
-				val.FieldByName(p[:i]).SetString(p[i+1:])
+	parts := strings.Split(s, ",")
+	for _, p := range parts {
+		if isFlag(p) {
+			if strings.HasPrefix(p, "--") {
+				tag.long = p
 				continue
 			}
-			val.FieldByName(p).SetBool(true)
+			tag.short = p
+			continue
+		}
+		var key, val string
+		key = p
+		if i := strings.Index(p, ":"); i != -1 {
+			key = p[:i]
+			val = p[i+1:]
+		}
+		switch strings.ToLower(key) {
+		case "required":
+			tag.required = true
+		case "positional":
+			tag.positional = true
+		case "global":
+			tag.global = true
+		case "embed":
+			tag.embed = true
+		case "iface":
+			tag.iface = val
 		}
 	}
 	return tag
