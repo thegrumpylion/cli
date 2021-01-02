@@ -17,10 +17,17 @@ import (
 // ParserOption option type for Parser
 type ParserOption func(p *Parser)
 
-// WithCase set the parser case. default is CaseCamelLower
-func WithCase(c ArgCase) ParserOption {
+// WithArgCase set the arg case. default is CaseCamelLower
+func WithArgCase(c Case) ParserOption {
 	return func(p *Parser) {
-		p.caseFunc = caseFuncs[c]
+		p.argCaseFunc = caseFuncs[c]
+	}
+}
+
+// WithCmdCase set the cmd case. default is CaseLower
+func WithCmdCase(c Case) ParserOption {
+	return func(p *Parser) {
+		p.cmdCaseFunc = caseFuncs[c]
 	}
 }
 
@@ -53,7 +60,8 @@ type Parser struct {
 	execTree       []interface{}
 	globalsEnabled bool
 	strategy       OnErrorStrategy
-	caseFunc       func(string) string
+	argCaseFunc    func(string) string
+	cmdCaseFunc    func(string) string
 }
 
 // NewParser create new parser
@@ -66,8 +74,13 @@ func NewParser(opts ...ParserOption) *Parser {
 	for _, o := range opts {
 		o(p)
 	}
-	if p.caseFunc == nil {
-		p.caseFunc = caseFuncs[CaseCamelLower]
+	// default arg case is CamelLower
+	if p.argCaseFunc == nil {
+		p.argCaseFunc = caseFuncs[CaseCamelLower]
+	}
+	// default cmd case is Lower
+	if p.cmdCaseFunc == nil {
+		p.cmdCaseFunc = caseFuncs[CaseLower]
 	}
 	return p
 }
@@ -468,7 +481,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 		tag = parseCliTag(tg)
 
 		// compute arg name
-		name := p.caseFunc(fn)
+		name := p.argCaseFunc(fn)
 		if tag.long != "" {
 			name = tag.long
 		}
@@ -496,7 +509,11 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 				continue
 			}
 			// parse struct as a command
-			c.addSubcmd(strings.ToLower(fn), ft, spth)
+			cname := p.cmdCaseFunc(fn)
+			if tag.cmd != "" {
+				cname = tag.cmd
+			}
+			c.addSubcmd(cname, ft, spth)
 			continue
 		}
 

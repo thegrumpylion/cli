@@ -6,7 +6,7 @@ func TestCase(t *testing.T) {
 	type caseTest struct {
 		in, out string
 	}
-	cases := map[ArgCase][]caseTest{
+	cases := map[Case][]caseTest{
 		CaseNone: {
 			caseTest{in: "What_Ever", out: "What_Ever"},
 		},

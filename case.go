@@ -6,11 +6,11 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-// ArgCase argument case
-type ArgCase uint32
+// Case string case
+type Case uint32
 
 const (
-	CaseNone ArgCase = iota
+	CaseNone Case = iota
 	CaseLower
 	CaseUpper
 	CaseCamel
@@ -21,7 +21,7 @@ const (
 	CaseKebabUpper
 )
 
-var caseFuncs = map[ArgCase]func(string) string{
+var caseFuncs = map[Case]func(string) string{
 	CaseNone: func(s string) string {
 		return s
 	},

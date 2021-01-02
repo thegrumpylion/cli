@@ -10,6 +10,7 @@ type clitag struct {
 	required   bool
 	positional bool
 	isArg      bool
+	cmd        string
 	global     bool
 	csv        bool
 	embed      bool
@@ -47,6 +48,10 @@ func parseCliTag(s string) *clitag {
 			tag.embed = true
 		case "iface":
 			tag.iface = val
+		case "arg":
+			tag.isArg = true
+		case "cmd":
+			tag.cmd = val
 		}
 	}
 	return tag
