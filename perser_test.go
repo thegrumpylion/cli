@@ -336,32 +336,3 @@ func TestTextUnmarshaler(t *testing.T) {
 		t.Fatal("value != theValue ==", args.Pair.Value)
 	}
 }
-
-func TestInterface(t *testing.T) {
-	type MuhEnm int
-
-	const (
-		Ena MuhEnm = iota + 1
-		Dio
-		Tria
-	)
-
-	enumMap := map[string]MuhEnm{
-		"ena":  Ena,
-		"dio":  Dio,
-		"tria": Tria,
-	}
-
-	RegisterEnum(enumMap)
-
-	RegisterInterface("test", map[MuhEnm]interface{}{
-		Ena: 42,
-	}, nil)
-
-	args := &struct {
-		Enum MuhEnm
-		TheI interface{} `cli:"iface:test"`
-	}{}
-
-	NewRootCommand("root", args)
-}

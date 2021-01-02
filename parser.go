@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/any"
 	"github.com/scylladb/go-set/strset"
 )
 
@@ -46,17 +43,11 @@ func WithGlobalArgsEnabled() ParserOption {
 
 var defaultParser = NewParser()
 
-type iface struct {
-	m map[interface{}]reflect.Type
-	f func(in, out interface{})
-}
-
 type Parser struct {
 	strict         bool
 	roots          []reflect.Value
 	cmds           map[string]*command
 	enums          map[reflect.Type]map[string]interface{}
-	ifaces         map[string]*iface
 	execTree       []interface{}
 	globalsEnabled bool
 	strategy       OnErrorStrategy
@@ -67,9 +58,8 @@ type Parser struct {
 // NewParser create new parser
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
-		cmds:   map[string]*command{},
-		enums:  map[reflect.Type]map[string]interface{}{},
-		ifaces: map[string]*iface{},
+		cmds:  map[string]*command{},
+		enums: map[reflect.Type]map[string]interface{}{},
 	}
 	for _, o := range opts {
 		o(p)
@@ -427,37 +417,6 @@ func (p *Parser) RegisterEnum(enmap interface{}) {
 
 	p.enums[te] = enm
 }
-func RegisterInterface(id string, infmap interface{}, f func(in, out interface{})) {
-	defaultParser.RegisterInterface(id, infmap, f)
-}
-
-func (p *Parser) RegisterInterface(id string, infmap interface{}, f func(in, out interface{})) {
-	v := reflect.ValueOf(infmap)
-	t := reflect.TypeOf(infmap)
-	if t.Kind() != reflect.Map {
-		panic("infmap must be a map")
-	}
-
-	// map key is the enum type
-	ke := t.Key()
-	if ke.PkgPath() == "" {
-		panic("infmap key must be custom type")
-	}
-	if _, ok := p.enums[ke]; !ok {
-		enmName := ke.PkgPath() + "." + ke.Name()
-		panic(fmt.Sprintf("enum %s not registered", enmName))
-	}
-
-	m := map[interface{}]reflect.Type{}
-	for _, k := range v.MapKeys() {
-		m[k.Interface()] = v.MapIndex(k).Elem().Elem().Type()
-	}
-
-	p.ifaces[id] = &iface{
-		m: m,
-		f: f,
-	}
-}
 
 var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
@@ -534,18 +493,6 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 		}
 		c.args[name] = a
 
-		if isInterface(ft) {
-			if tag.iface == "" {
-				panic("no iface name configured for " + ft.Name())
-			}
-			ifc, ok := p.ifaces[tag.iface]
-			if !ok {
-				panic("iface not registered: " + tag.iface)
-			}
-			fmt.Printf("%#v\n", ifc.m)
-			continue
-		}
-
 		// get the underlaying type if pointer
 		if isPtr(ft) {
 			ft = ft.Elem()
@@ -586,21 +533,4 @@ func (p *Parser) validateFlag(flg string) (valid, short bool, arg string) {
 
 func isFlag(s string) bool {
 	return strings.HasPrefix(s, "-") && strings.TrimLeft(s, "-") != ""
-}
-
-func MarshalAny(in, out interface{}) {
-	i, ok := in.(proto.Message)
-	if !ok {
-		panic("in not proto.Message")
-	}
-	o, ok := out.(*any.Any)
-	if !ok {
-		panic("out not *any.Any")
-	}
-	b, err := proto.Marshal(i)
-	if err != nil {
-		panic(err)
-	}
-	o.TypeUrl = proto.MessageName(i)
-	o.Value = b
 }
