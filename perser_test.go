@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -242,8 +241,18 @@ type SubCmdA struct {
 }
 
 func (c *SubCmdA) Run(ctx context.Context) error {
-	fmt.Println("c:", c)
-	fmt.Printf("SubCmdA %v %p\n", c.Name, ctx)
+	v := ctx.Value("testState")
+	if v == nil {
+		return errors.New("SubCmdA.Run: testState not found in context")
+	}
+	s, ok := v.(*testState)
+	if !ok {
+		return errors.New("SubCmdA.Run: v is not *testState")
+	}
+	s.suba = true
+	if c.Name != "tester" {
+		s.t.Fatal("SubCmdA.Run: Name is not tester")
+	}
 	return nil
 }
 
@@ -252,7 +261,18 @@ type SubCmdB struct {
 }
 
 func (c *SubCmdB) Run(ctx context.Context) error {
-	fmt.Printf("SubCmdB %v %p\n", c.Num, ctx)
+	v := ctx.Value("testState")
+	if v == nil {
+		return errors.New("SubCmdB.Run: testState not found in context")
+	}
+	s, ok := v.(*testState)
+	if !ok {
+		return errors.New("SubCmdB.Run: v is not *testState")
+	}
+	s.subb = true
+	if c.Num != 42 {
+		s.t.Fatal("SubCmdB.Run: Num is not 42")
+	}
 	return nil
 }
 
@@ -262,11 +282,26 @@ type RootCmd struct {
 }
 
 func (c *RootCmd) PersistentPreRun(ctx context.Context) error {
-	fmt.Printf("RootCmd %p\n", ctx)
+	v := ctx.Value("testState")
+	if v == nil {
+		return errors.New("RootCmd.PersistentPreRun: testState not found in context")
+	}
+	s, ok := v.(*testState)
+	if !ok {
+		return errors.New("RootCmd.PersistentPreRun: v is not *testState")
+	}
+	s.ppr = true
 	return nil
 }
 
-func TestExecute(t *testing.T) {
+type testState struct {
+	t    *testing.T
+	ppr  bool
+	suba bool
+	subb bool
+}
+
+func TestExecuteRoot(t *testing.T) {
 	a := &RootCmd{}
 
 	NewRootCommand("root", a)
@@ -276,9 +311,16 @@ func TestExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = Execute(context.Background())
+	state := &testState{t: t}
+
+	ctx := context.WithValue(context.Background(), "testState", state)
+	err = Execute(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !state.ppr {
+		t.Fatal("state.ppr not set")
 	}
 }
 
@@ -287,16 +329,52 @@ func TestExecuteSubA(t *testing.T) {
 
 	NewRootCommand("root", a)
 
-	err := Eval([]string{"root", "suba", "--name", "efterpi"})
+	err := Eval([]string{"root", "suba", "--name", "tester"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println("a", a, a.SubA, a.SubB)
+	state := &testState{t: t}
 
-	err = Execute(context.Background())
+	ctx := context.WithValue(context.Background(), "testState", state)
+	err = Execute(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !state.ppr {
+		t.Fatal("state.ppr not set")
+	}
+
+	if !state.suba {
+		t.Fatal("state.suba not set")
+	}
+}
+
+func TestExecuteSubB(t *testing.T) {
+	a := &RootCmd{}
+
+	NewRootCommand("root", a)
+
+	err := Eval([]string{"root", "subb", "--num", "42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state := &testState{t: t}
+
+	ctx := context.WithValue(context.Background(), "testState", state)
+	err = Execute(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !state.ppr {
+		t.Fatal("state.ppr not set")
+	}
+
+	if !state.subb {
+		t.Fatal("state.subb not set")
 	}
 }
 
