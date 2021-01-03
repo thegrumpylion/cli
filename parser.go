@@ -21,6 +21,13 @@ func WithArgCase(c Case) ParserOption {
 	}
 }
 
+// WithEnvCase set the env case. default is CaseSnakeUpper
+func WithEnvCase(c Case) ParserOption {
+	return func(p *Parser) {
+		p.envCaseFunc = caseFuncs[c]
+	}
+}
+
 // WithCmdCase set the cmd case. default is CaseLower
 func WithCmdCase(c Case) ParserOption {
 	return func(p *Parser) {
@@ -35,6 +42,7 @@ func WithOnErrorStrategy(str OnErrorStrategy) ParserOption {
 	}
 }
 
+// WithGlobalArgsEnabled enable global argumets
 func WithGlobalArgsEnabled() ParserOption {
 	return func(p *Parser) {
 		p.globalsEnabled = true
@@ -43,6 +51,7 @@ func WithGlobalArgsEnabled() ParserOption {
 
 var defaultParser = NewParser()
 
+// Parser is the cli parser
 type Parser struct {
 	strict         bool
 	roots          []reflect.Value
@@ -52,6 +61,7 @@ type Parser struct {
 	globalsEnabled bool
 	strategy       OnErrorStrategy
 	argCaseFunc    func(string) string
+	envCaseFunc    func(string) string
 	cmdCaseFunc    func(string) string
 }
 
@@ -67,6 +77,10 @@ func NewParser(opts ...ParserOption) *Parser {
 	// default arg case is CamelLower
 	if p.argCaseFunc == nil {
 		p.argCaseFunc = caseFuncs[CaseCamelLower]
+	}
+	// default env case is SnakeUpper
+	if p.envCaseFunc == nil {
+		p.envCaseFunc = caseFuncs[CaseSnakeUpper]
 	}
 	// default cmd case is Lower
 	if p.cmdCaseFunc == nil {
@@ -295,25 +309,35 @@ func (p *Parser) Eval(args []string) error {
 	return nil
 }
 
+// OnErrorStrategy defines how errors are handled on execution
 type OnErrorStrategy uint
 
 const (
+	// OnErrorBreak halt execution and return the error immediately
 	OnErrorBreak OnErrorStrategy = iota
+	// OnErrorPostRunners execute post runners in stack but break if post runner returns error.
+	// LastErrorFromContext can be used to retrieve the error
 	OnErrorPostRunners
+	// OnErrorPostRunnersContinue execute post runners in stack ignoring errors. LastErrorFromContext
+	// can be used to retrieve any error
 	OnErrorPostRunnersContinue
+	// OnErrorContinue ignore errors. LastErrorFromContext can be used to retrieve any error.
 	OnErrorContinue
 )
 
-func Execute(ctx context.Context) error {
-	return defaultParser.Execute(ctx)
-}
-
 type lastErrorKey struct{}
 
+// LastErrorFromContext get the last error in case the execution continues on errors
 func LastErrorFromContext(ctx context.Context) error {
 	return ctx.Value(lastErrorKey{}).(error)
 }
 
+// Execute the chain of commands
+func Execute(ctx context.Context) error {
+	return defaultParser.Execute(ctx)
+}
+
+// Execute the chain of commands
 func (p *Parser) Execute(ctx context.Context) error {
 
 	var err error
@@ -385,29 +409,32 @@ func (p *Parser) Execute(ctx context.Context) error {
 	return err
 }
 
-func RegisterEnum(enmap interface{}) {
-	defaultParser.RegisterEnum(enmap)
+// RegisterEnum resgister an enum map to the default parser
+func RegisterEnum(enumMap interface{}) {
+	defaultParser.RegisterEnum(enumMap)
 }
 
-func (p *Parser) RegisterEnum(enmap interface{}) {
-	v := reflect.ValueOf(enmap)
-	t := reflect.TypeOf(enmap)
+// RegisterEnum resgister an enum map. map must have string key and int/uint
+// value. The value must also be a custom type e.g. type MyEnum uint32
+func (p *Parser) RegisterEnum(enumMap interface{}) {
+	v := reflect.ValueOf(enumMap)
+	t := reflect.TypeOf(enumMap)
 	if t.Kind() != reflect.Map {
-		panic("enmap must be a map")
+		panic("enumMap must be a map")
 	}
 
 	// key is the string of enum
 	if t.Key().Kind() != reflect.String {
-		panic("enmap key must be string")
+		panic("enumMap key must be string")
 	}
 
 	// element is enum int/uint custom type
 	te := t.Elem()
 	if te.PkgPath() == "" {
-		panic("enmap element must be custom type")
+		panic("enumMap element must be custom type")
 	}
 	if !(isInt(te) || isUint(te)) {
-		panic("enmap element must be int/uint")
+		panic("enumMap element must be int/uint")
 	}
 
 	enm := map[string]interface{}{}

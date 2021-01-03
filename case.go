@@ -10,14 +10,23 @@ import (
 type Case uint32
 
 const (
+	// CaseNone string as is
 	CaseNone Case = iota
+	// CaseLower caselower
 	CaseLower
+	// CaseUpper CASEUPPER
 	CaseUpper
+	// CaseCamel CaseCamel
 	CaseCamel
+	// CaseCamelLower caseCamelLower
 	CaseCamelLower
+	// CaseSnake case_snake
 	CaseSnake
+	// CaseSnakeUpper CASE_SNAKE_UPPER
 	CaseSnakeUpper
+	// CaseKebab case-kebab
 	CaseKebab
+	// CaseKebabUpper CASE-KEBAB-UPPER
 	CaseKebabUpper
 )
 
