@@ -20,7 +20,7 @@ type Parser struct {
 	roots          []reflect.Value
 	cmds           map[string]*command
 	enums          map[reflect.Type]map[string]interface{}
-	execTree       []interface{}
+	execList       []interface{}
 	globalsEnabled bool
 	strategy       OnErrorStrategy
 	argCase        Case
@@ -84,8 +84,6 @@ func Eval(args []string) error {
 // Eval marshal string args to struct
 func (p *Parser) Eval(args []string) error {
 
-	values := map[*argument][]string{}
-
 	c, ok := p.cmds[args[0]]
 	// try base path
 	if !ok {
@@ -95,11 +93,14 @@ func (p *Parser) Eval(args []string) error {
 		}
 	}
 
-	p.execTree = append(p.execTree, c.path.Get())
+	// add root command to execution list
+	p.execList = append(p.execList, c.path.Get())
 
 	args = args[1:]
+	values := map[*argument][]string{}
 	positional := false
 	positionals := []string{}
+
 	for i := 0; i < len(args); i++ {
 
 		arg := args[i]
@@ -124,7 +125,8 @@ func (p *Parser) Eval(args []string) error {
 					return err
 				}
 				c = cc
-				p.execTree = append(p.execTree, c.path.Get())
+				// add subcommand to execution list
+				p.execList = append(p.execList, c.path.Get())
 				continue
 			}
 			positionals = append(positionals, arg)
@@ -247,30 +249,7 @@ func (p *Parser) setValues(values map[*argument][]string) error {
 	return nil
 }
 
-// OnErrorStrategy defines how errors are handled on execution
-type OnErrorStrategy uint
-
-const (
-	// OnErrorBreak halt execution and return the error immediately
-	OnErrorBreak OnErrorStrategy = iota
-	// OnErrorPostRunners execute post runners in stack but break if post runner returns error.
-	// LastErrorFromContext can be used to retrieve the error
-	OnErrorPostRunners
-	// OnErrorPostRunnersContinue execute post runners in stack ignoring errors. LastErrorFromContext
-	// can be used to retrieve any error
-	OnErrorPostRunnersContinue
-	// OnErrorContinue ignore errors. LastErrorFromContext can be used to retrieve any error.
-	OnErrorContinue
-)
-
-type lastErrorKey struct{}
-
-// LastErrorFromContext get the last error in case the execution continues on errors
-func LastErrorFromContext(ctx context.Context) error {
-	return ctx.Value(lastErrorKey{}).(error)
-}
-
-// Execute the chain of commands
+// Execute the chain of commands in default parser
 func Execute(ctx context.Context) error {
 	return defaultParser.Execute(ctx)
 }
@@ -279,10 +258,10 @@ func Execute(ctx context.Context) error {
 func (p *Parser) Execute(ctx context.Context) error {
 
 	var err error
-	lastCmd := len(p.execTree) - 1
+	lastCmd := len(p.execList) - 1
 	pPostRunners := []PersistentPostRunner{}
 
-	for i, inf := range p.execTree {
+	for i, inf := range p.execList {
 		// PersistentPostRun pushed on a stack to run in a reverse order
 		if rnr, ok := inf.(PersistentPostRunner); ok {
 			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
@@ -393,8 +372,8 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 
 		// get field
 		f := t.Field(i)
-		fn := f.Name
-		ft := f.Type
+		fldName := f.Name
+		fldType := f.Type
 
 		// get and parse cli tag
 		var tag *clitag
@@ -405,7 +384,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		tag = parseCliTag(tg)
 
 		// compute arg name
-		name := p.argCase.Parse(fn)
+		name := p.argCase.Parse(fldName)
 		if tag.long != "" {
 			name = tag.long
 		}
@@ -414,7 +393,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		}
 
 		// compute env var name
-		env := p.envCase.Parse(fn)
+		env := p.envCase.Parse(fldName)
 		if tag.long != "" {
 			env = tag.env
 		}
@@ -423,41 +402,33 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		}
 
 		// create subpath for the current field
-		spth := pth.Subpath(fn)
+		spth := pth.Subpath(fldName)
 
-		if isStruct(ft) && !ft.Implements(textUnmarshaler) {
+		if isStruct(fldType) && !fldType.Implements(textUnmarshaler) {
 			// embedded struct parse as args of parent
 			if f.Anonymous {
-				p.walkStruct(c, ft, spth, pfx, envpfx, isArg, globals)
+				p.walkStruct(c, fldType, spth, pfx, envpfx, isArg, globals)
 				continue
 			}
 			// we know is an arg so use the name as prefix
 			if isArg {
-				p.walkStruct(c, ft, spth, name, env, isArg, globals)
+				p.walkStruct(c, fldType, spth, name, env, isArg, globals)
 				continue
 			}
 			// is a ptr to struct but isArg in tag is set or
 			// is normal struct so this is an arg
-			if tag.isArg || !isPtr(ft) {
-				p.walkStruct(c, ft, spth, name, env, true, globals)
+			if tag.isArg || !isPtr(fldType) {
+				p.walkStruct(c, fldType, spth, name, env, true, globals)
 				continue
 			}
 			// parse struct as a command
-			cname := p.cmdCase.Parse(fn)
+			cname := p.cmdCase.Parse(fldName)
 			if tag.cmd != "" {
 				cname = tag.cmd
 			}
 			sc := c.AddSubcommand(cname, spth)
-			p.walkStruct(sc, ft, spth, "", "", false, globals.Copy())
+			p.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
 			continue
-		}
-
-		// check for global args propagation collision
-		if p.globalsEnabled && tag.global {
-			if globals.Has(name) {
-				panic("global args propagation collision")
-			}
-			globals.Add(name)
 		}
 
 		// generate long and short flags
@@ -470,10 +441,24 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 			short = "-" + tag.short
 		}
 
+		// check for global args propagation collision
+		if p.globalsEnabled && tag.global {
+			if globals.Has(long) {
+				panic("global args propagation collision")
+			}
+			globals.Add(long)
+			if short != "" {
+				if globals.Has(short) {
+					panic("global args propagation collision")
+				}
+				globals.Add(short)
+			}
+		}
+
 		// create arg and add to command
 		a := &argument{
 			path:       spth,
-			typ:        ft,
+			typ:        fldType,
 			long:       long,
 			short:      short,
 			env:        env,
@@ -485,15 +470,15 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		c.AddArg(a)
 
 		// get the underlaying type if pointer
-		if isPtr(ft) {
-			ft = ft.Elem()
+		if isPtr(fldType) {
+			fldType = fldType.Elem()
 		}
 
-		if isArray(ft) {
-			switch ft.Kind() {
+		if isArray(fldType) {
+			switch fldType.Kind() {
 			case reflect.Array:
 				a.isArray = true
-				a.arrayLen = ft.Len()
+				a.arrayLen = fldType.Len()
 			case reflect.Slice:
 				a.isSlice = true
 				a.arrayLen = -1
@@ -501,8 +486,8 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		}
 
 		// check for enums
-		if isInt(ft) || isUint(ft) {
-			if _, ok := p.enums[ft]; ok {
+		if isInt(fldType) || isUint(fldType) {
+			if _, ok := p.enums[fldType]; ok {
 				a.enum = true
 			}
 		}
