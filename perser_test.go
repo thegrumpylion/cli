@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -36,18 +37,18 @@ func TestParse(t *testing.T) {
 	}{}
 
 	strargs := []string{
-		"str",
-		"int",
-		"bool",
-		"float",
-		"strPtr",
-		"intPtr",
-		"boolPtr",
-		"floatPtr",
-		"embStr",
-		"embInt",
-		"embBool",
-		"embFloat",
+		"--str",
+		"--int",
+		"--bool",
+		"--float",
+		"--strPtr",
+		"--intPtr",
+		"--boolPtr",
+		"--floatPtr",
+		"--embStr",
+		"--embInt",
+		"--embBool",
+		"--embFloat",
 	}
 
 	strcmds := []string{
@@ -60,7 +61,7 @@ func TestParse(t *testing.T) {
 	root := defaultParser.cmds["root"]
 
 	for _, sa := range strargs {
-		if _, ok := root.args[sa]; !ok {
+		if _, ok := root.flags.long[sa]; !ok {
 			t.Fatalf("arg %s not found\n", sa)
 		}
 	}
@@ -412,5 +413,25 @@ func TestTextUnmarshaler(t *testing.T) {
 
 	if args.Pair.Value != "theValue" {
 		t.Fatal("value != theValue ==", args.Pair.Value)
+	}
+}
+
+func TestEnvDefaultCase(t *testing.T) {
+	args := &struct {
+		SomeStringVal string
+		SomeIntVal    int
+		SomeStructVal struct {
+			SomeStringVal string
+			SomeIntVal    int
+		}
+	}{}
+
+	NewRootCommand("root", args)
+
+	root := defaultParser.cmds["root"]
+
+	for _, a := range root.flags.long {
+		fmt.Println(a.long)
+		fmt.Println(a.env)
 	}
 }

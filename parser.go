@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -11,80 +12,37 @@ import (
 	"github.com/scylladb/go-set/strset"
 )
 
-// ParserOption option type for Parser
-type ParserOption func(p *Parser)
-
-// WithArgCase set the arg case. default is CaseCamelLower
-func WithArgCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.argCaseFunc = caseFuncs[c]
-	}
-}
-
-// WithEnvCase set the env case. default is CaseSnakeUpper
-func WithEnvCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.envCaseFunc = caseFuncs[c]
-	}
-}
-
-// WithCmdCase set the cmd case. default is CaseLower
-func WithCmdCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.cmdCaseFunc = caseFuncs[c]
-	}
-}
-
-// WithOnErrorStrategy sets the execution strategy for handling errors
-func WithOnErrorStrategy(str OnErrorStrategy) ParserOption {
-	return func(p *Parser) {
-		p.strategy = str
-	}
-}
-
-// WithGlobalArgsEnabled enable global argumets
-func WithGlobalArgsEnabled() ParserOption {
-	return func(p *Parser) {
-		p.globalsEnabled = true
-	}
-}
-
 var defaultParser = NewParser()
 
 // Parser is the cli parser
 type Parser struct {
-	strict         bool
+	tags           StructTags
 	roots          []reflect.Value
 	cmds           map[string]*command
 	enums          map[reflect.Type]map[string]interface{}
 	execTree       []interface{}
 	globalsEnabled bool
 	strategy       OnErrorStrategy
-	argCaseFunc    func(string) string
-	envCaseFunc    func(string) string
-	cmdCaseFunc    func(string) string
+	argCase        Case
+	envCase        Case
+	cmdCase        Case
+	argSplicer     Splicer
+	envSplicer     Splicer
 }
 
 // NewParser create new parser
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
-		cmds:  map[string]*command{},
-		enums: map[reflect.Type]map[string]interface{}{},
+		cmds:       map[string]*command{},
+		enums:      map[reflect.Type]map[string]interface{}{},
+		argCase:    CaseCamelLower,
+		envCase:    CaseSnakeUpper,
+		cmdCase:    CaseLower,
+		argSplicer: SplicerDot,
+		envSplicer: SplicerUnderscore,
 	}
 	for _, o := range opts {
 		o(p)
-	}
-	// default arg case is CamelLower
-	if p.argCaseFunc == nil {
-		p.argCaseFunc = caseFuncs[CaseCamelLower]
-	}
-	// default env case is SnakeUpper
-	if p.envCaseFunc == nil {
-		p.envCaseFunc = caseFuncs[CaseSnakeUpper]
-	}
-	// default cmd case is Lower
-	if p.cmdCaseFunc == nil {
-		p.cmdCaseFunc = caseFuncs[CaseLower]
 	}
 	return p
 }
@@ -103,14 +61,19 @@ func NewRootCommand(name string, arg interface{}) {
 
 // NewRootCommand add new root command to this parser
 func (p *Parser) NewRootCommand(name string, arg interface{}) {
+	t := reflect.TypeOf(arg)
+	if t.Kind() != reflect.Ptr && t.Elem().Kind() != reflect.Struct {
+		panic("not ptr to struct")
+	}
+	path := p.addRoot(arg)
 	c := &command{
-		parser: p,
+		path:   path,
 		name:   name,
 		subcmd: map[string]*command{},
-		args:   map[string]*argument{},
+		flags:  newFlagSet(),
 	}
-	c.parse(arg)
 	p.cmds[name] = c
+	p.walkStruct(c, t, path, "", "", false, strset.New())
 }
 
 // Eval marshal string args to struct using the defaultParser
@@ -118,37 +81,10 @@ func Eval(args []string) error {
 	return defaultParser.Eval(args)
 }
 
-type argSet map[*argument]struct{}
-
-func (s argSet) Insert(a *argument) bool {
-	if _, ok := s[a]; ok {
-		return false
-	}
-	s[a] = struct{}{}
-	return true
-}
-
-func (s argSet) Delete(a *argument) bool {
-	if _, ok := s[a]; !ok {
-		return false
-	}
-	delete(s, a)
-	return true
-}
-
-func (s argSet) List() (args []*argument) {
-	for a := range s {
-		args = append(args, a)
-	}
-	return
-}
-
 // Eval marshal string args to struct
 func (p *Parser) Eval(args []string) error {
 
-	currentCmdArgs := argSet{}
-	globalArgs := argSet{}
-	arrays := map[*argument][]string{}
+	values := map[*argument][]string{}
 
 	c, ok := p.cmds[args[0]]
 	// try base path
@@ -160,13 +96,6 @@ func (p *Parser) Eval(args []string) error {
 	}
 
 	p.execTree = append(p.execTree, c.path.Get())
-
-	for _, a := range c.args {
-		currentCmdArgs.Insert(a)
-		if p.globalsEnabled && a.global {
-			globalArgs.Insert(a)
-		}
-	}
 
 	args = args[1:]
 	positional := false
@@ -191,11 +120,15 @@ func (p *Parser) Eval(args []string) error {
 				if !ok {
 					return ErrCommandNotFound(arg)
 				}
+				if err := p.setValues(values); err != nil {
+					return err
+				}
 				c = cc
 				p.execTree = append(p.execTree, c.path.Get())
 				continue
 			}
 			positionals = append(positionals, arg)
+			continue
 		}
 
 		if arg == "-h" || arg == "--help" {
@@ -207,56 +140,41 @@ func (p *Parser) Eval(args []string) error {
 		}
 
 		val := ""
+		compositeFlag := false
 		// get flag and value in case --flag=value
 		if i := strings.Index(arg, "="); i != -1 {
 			arg = arg[:i]
 			val = arg[i+1:]
+			compositeFlag = true
 		}
 
-		valid, short, arg := p.validateFlag(arg)
-		if !valid {
-			return ErrInvalidFlag(arg)
-		}
-
-		a := &argument{}
-		var ok bool
-		if short {
-			a, ok = c.argsS[arg]
-		} else {
-			a, ok = c.args[arg]
-		}
-		if !ok {
+		a := c.GetFlag(arg)
+		if a == nil {
 			return ErrNoSuchFlag(arg)
 		}
-
-		currentCmdArgs.Delete(a)
 
 		// handle arrays and slices
 		if a.isArray || a.isSlice {
 			if a.separate {
-				if _, ok := arrays[a]; !ok {
-					arrays[a] = []string{}
-				}
 				// if is array and overflows
-				if a.isArray && len(arrays[a]) == a.arrayLen {
+				if a.isArray && len(values[a]) == a.arrayLen {
 					return errors.New("array over capacity")
 				}
 				if val == "" {
 					val = args[i+1]
 					i++
 				}
-				arrays[a] = append(arrays[a], val)
+				values[a] = append(values[a], val)
 				continue
 			}
 			// clear array
-			arrays[a] = []string{}
 			if a.isArray {
 				for j := 0; j < a.arrayLen; j++ {
 					val = args[i+1]
 					if isFlag(val) {
 						continue
 					}
-					arrays[a] = append(arrays[a], val)
+					values[a] = append(values[a], val)
 					i++
 				}
 				continue
@@ -265,17 +183,49 @@ func (p *Parser) Eval(args []string) error {
 				if isFlag(val) {
 					continue
 				}
-				arrays[a] = append(arrays[a], val)
+				values[a] = append(values[a], val)
+				i++
+			}
+			continue
+		}
+
+		// get the value in case --flag value
+		if !compositeFlag {
+			if a.isBool() {
+				val = "true"
+			} else {
+				val = args[i+1]
 				i++
 			}
 		}
 
-		// get the value in case --flag value
-		if !a.isBool() && val == "" {
-			val = args[i+1]
-			i++
-		}
+		values[a] = []string{val}
+	}
 
+	if err := p.setValues(values); err != nil {
+		return err
+	}
+
+	for _, a := range c.AllFlags() {
+		if a.required && !a.isSet {
+			return fmt.Errorf("required flag not set: %s", a.long)
+		}
+	}
+
+	return nil
+}
+
+func (p *Parser) setValues(values map[*argument][]string) error {
+	for a, s := range values {
+		a.isSet = true
+		// handle array
+		if len(s) > 1 {
+			if err := a.setArrayValue(s); err != nil {
+				return err
+			}
+			continue
+		}
+		val := s[0]
 		// handle encoding.TextUnmarshaler
 		if tum, ok := a.path.Get().(encoding.TextUnmarshaler); ok {
 			if err := tum.UnmarshalText([]byte(val)); err != nil {
@@ -283,29 +233,17 @@ func (p *Parser) Eval(args []string) error {
 			}
 			continue
 		}
-
 		// handle enum
 		if a.enum {
 			em := p.enums[a.typ]
 			a.setValue(em[strings.ToLower(val)])
-			i++
 			continue
 		}
-
 		// handle scalar
 		if err := a.setScalarValue(val); err != nil {
 			return err
 		}
 	}
-
-	if len(arrays) != 0 {
-		for a, v := range arrays {
-			if err := a.setArrayValue(v); err != nil {
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -447,7 +385,7 @@ func (p *Parser) RegisterEnum(enumMap interface{}) {
 
 var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
-func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, isArg bool, globals *strset.Set) {
+func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx string, isArg bool, globals *strset.Set) {
 	if isPtr(t) {
 		t = t.Elem()
 	}
@@ -460,46 +398,57 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 
 		// get and parse cli tag
 		var tag *clitag
-		tg := f.Tag.Get("cli")
+		tg := f.Tag.Get(p.tags.Cli)
 		if tg == "-" {
 			continue
 		}
 		tag = parseCliTag(tg)
 
 		// compute arg name
-		name := p.argCaseFunc(fn)
+		name := p.argCase.Parse(fn)
 		if tag.long != "" {
 			name = tag.long
 		}
 		if pfx != "" {
-			name = pfx + "." + name
+			name = p.argSplicer.Splice(pfx, name)
 		}
 
+		// compute env var name
+		env := p.envCase.Parse(fn)
+		if tag.long != "" {
+			env = tag.env
+		}
+		if envpfx != "" {
+			env = p.envSplicer.Splice(envpfx, env)
+		}
+
+		// create subpath for the current field
 		spth := pth.Subpath(fn)
 
 		if isStruct(ft) && !ft.Implements(textUnmarshaler) {
 			// embedded struct parse as args of parent
 			if f.Anonymous {
-				p.walkStruct(c, ft, spth, pfx, isArg, globals)
+				p.walkStruct(c, ft, spth, pfx, envpfx, isArg, globals)
 				continue
 			}
 			// we know is an arg so use the name as prefix
 			if isArg {
-				p.walkStruct(c, ft, spth, name, isArg, globals)
+				p.walkStruct(c, ft, spth, name, env, isArg, globals)
 				continue
 			}
 			// is a ptr to struct but isArg in tag is set or
 			// is normal struct so this is an arg
 			if tag.isArg || !isPtr(ft) {
-				p.walkStruct(c, ft, spth, name, true, globals)
+				p.walkStruct(c, ft, spth, name, env, true, globals)
 				continue
 			}
 			// parse struct as a command
-			cname := p.cmdCaseFunc(fn)
+			cname := p.cmdCase.Parse(fn)
 			if tag.cmd != "" {
 				cname = tag.cmd
 			}
-			c.addSubcmd(cname, ft, spth)
+			sc := c.AddSubcommand(cname, spth)
+			p.walkStruct(sc, ft, spth, "", "", false, globals.Copy())
 			continue
 		}
 
@@ -511,14 +460,29 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 			globals.Add(name)
 		}
 
-		a := &argument{
-			path:     spth,
-			typ:      ft,
-			long:     name,
-			help:     f.Tag.Get("help"),
-			required: tag.required,
+		// generate long and short flags
+		long := "--" + name
+		short := ""
+		if tag.short != "" {
+			if len(tag.short) != 1 {
+				panic("wrong short tag: " + tag.short)
+			}
+			short = "-" + tag.short
 		}
-		c.args[name] = a
+
+		// create arg and add to command
+		a := &argument{
+			path:       spth,
+			typ:        ft,
+			long:       long,
+			short:      short,
+			env:        env,
+			required:   tag.required,
+			positional: tag.positional,
+			def:        f.Tag.Get(p.tags.Default),
+			help:       f.Tag.Get(p.tags.Help),
+		}
+		c.AddArg(a)
 
 		// get the underlaying type if pointer
 		if isPtr(ft) {
@@ -536,26 +500,13 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx string, i
 			}
 		}
 
+		// check for enums
 		if isInt(ft) || isUint(ft) {
 			if _, ok := p.enums[ft]; ok {
 				a.enum = true
 			}
 		}
 	}
-}
-
-func (p *Parser) validateFlag(flg string) (valid, short bool, arg string) {
-	if flg == "-" {
-		return false, false, ""
-	}
-	if len(flg) == 2 && flg[0] == '-' {
-		return true, true, string(flg[1])
-	}
-	if flg[0] == '-' && flg[1] != '-' && p.strict {
-		return false, false, ""
-	}
-	arg = strings.TrimLeft(flg, "-")
-	return true, false, arg
 }
 
 func isFlag(s string) bool {

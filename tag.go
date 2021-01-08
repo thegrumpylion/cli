@@ -4,9 +4,17 @@ import (
 	"strings"
 )
 
+// StructTags struct tags values
+type StructTags struct {
+	Cli     string
+	Default string
+	Help    string
+}
+
 type clitag struct {
 	long       string
 	short      string
+	env        string
 	required   bool
 	positional bool
 	isArg      bool
@@ -25,10 +33,10 @@ func parseCliTag(s string) *clitag {
 	for _, p := range parts {
 		if isFlag(p) {
 			if strings.HasPrefix(p, "--") {
-				tag.long = p
+				tag.long = strings.TrimPrefix(p, "--")
 				continue
 			}
-			tag.short = p
+			tag.short = strings.TrimPrefix(p, "-")
 			continue
 		}
 		var key, val string
@@ -38,6 +46,8 @@ func parseCliTag(s string) *clitag {
 			val = p[i+1:]
 		}
 		switch strings.ToLower(key) {
+		case "env":
+			tag.env = val
 		case "required":
 			tag.required = true
 		case "positional":

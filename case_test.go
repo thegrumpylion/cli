@@ -45,7 +45,7 @@ func TestCase(t *testing.T) {
 
 	for c, tests := range cases {
 		for _, tst := range tests {
-			r := caseFuncs[c](tst.in)
+			r := c.Parse(tst.in)
 			if r != tst.out {
 				t.Fatal(r, "not", tst.out, tst.in)
 			}

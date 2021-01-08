@@ -30,32 +30,54 @@ const (
 	CaseKebabUpper
 )
 
-var caseFuncs = map[Case]func(string) string{
-	CaseNone: func(s string) string {
-		return s
-	},
-	CaseLower: func(s string) string {
+// Parse resturns s in case c
+func (c Case) Parse(s string) string {
+	switch c {
+	case CaseLower:
 		return strings.ToLower(s)
-	},
-	CaseUpper: func(s string) string {
+	case CaseUpper:
 		return strings.ToUpper(s)
-	},
-	CaseCamel: func(s string) string {
+	case CaseCamel:
 		return strcase.ToCamel(s)
-	},
-	CaseCamelLower: func(s string) string {
+	case CaseCamelLower:
 		return strcase.ToLowerCamel(s)
-	},
-	CaseSnake: func(s string) string {
+	case CaseSnake:
 		return strcase.ToSnake(s)
-	},
-	CaseSnakeUpper: func(s string) string {
+	case CaseSnakeUpper:
 		return strcase.ToScreamingSnake(s)
-	},
-	CaseKebab: func(s string) string {
+	case CaseKebab:
 		return strcase.ToKebab(s)
-	},
-	CaseKebabUpper: func(s string) string {
+	case CaseKebabUpper:
 		return strcase.ToScreamingKebab(s)
-	},
+	default:
+		return s
+	}
+}
+
+// Splicer neated arg/env string splicer
+type Splicer uint32
+
+const (
+	// SplicerNone no splicer
+	SplicerNone = iota
+	// SplicerDot . splicer
+	SplicerDot
+	// SplicerDash - splicer
+	SplicerDash
+	// SplicerUnderscore _ splicer
+	SplicerUnderscore
+)
+
+// Splice concatenates a and b separated by char s
+func (s Splicer) Splice(a, b string) string {
+	switch s {
+	case SplicerDot:
+		return a + "." + b
+	case SplicerDash:
+		return a + "-" + b
+	case SplicerUnderscore:
+		return a + "_" + b
+	default:
+		return a + b
+	}
 }
