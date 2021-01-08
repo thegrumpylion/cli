@@ -20,43 +20,47 @@ type Parser struct {
 	roots          []reflect.Value
 	cmds           map[string]*command
 	enums          map[reflect.Type]map[string]interface{}
-	execList       []interface{}
 	globalsEnabled bool
-	strategy       OnErrorStrategy
 	argCase        Case
 	envCase        Case
 	cmdCase        Case
 	argSplicer     Splicer
 	envSplicer     Splicer
+	helpLong       string
+	helpShort      string
+	versionLong    string
+	versionShort   string
+	strategy       OnErrorStrategy
+	execList       []interface{}
 }
 
 // NewParser create new parser
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
-		tags: StructTags{
-			Cli:     "cli",
-			Help:    "help",
-			Default: "default",
-		},
-		cmds:       map[string]*command{},
-		enums:      map[reflect.Type]map[string]interface{}{},
-		argCase:    CaseCamelLower,
-		envCase:    CaseSnakeUpper,
-		cmdCase:    CaseLower,
-		argSplicer: SplicerDot,
-		envSplicer: SplicerUnderscore,
+		cmds:        map[string]*command{},
+		enums:       map[reflect.Type]map[string]interface{}{},
+		argCase:     CaseCamelLower,
+		envCase:     CaseSnakeUpper,
+		cmdCase:     CaseLower,
+		argSplicer:  SplicerDot,
+		envSplicer:  SplicerUnderscore,
+		helpLong:    "--help",
+		helpShort:   "-h",
+		versionLong: "--version",
 	}
 	for _, o := range opts {
 		o(p)
 	}
-	return p
-}
-
-func (p *Parser) addRoot(in interface{}) *path {
-	p.roots = append(p.roots, reflect.ValueOf(in))
-	return &path{
-		root: &p.roots[len(p.roots)-1],
+	if p.tags.Cli == "" {
+		p.tags.Cli = "cli"
 	}
+	if p.tags.Help == "" {
+		p.tags.Help = "help"
+	}
+	if p.tags.Default == "" {
+		p.tags.Default = "default"
+	}
+	return p
 }
 
 // NewRootCommand add new root command to defaultParser
@@ -90,8 +94,8 @@ func Eval(args []string) error {
 func (p *Parser) Eval(args []string) error {
 
 	c, ok := p.cmds[args[0]]
-	// try base path
 	if !ok {
+		// try base path
 		c, ok = p.cmds[filepath.Base(args[0])]
 		if !ok {
 			return ErrCommandNotFound(args[0])
@@ -106,6 +110,7 @@ func (p *Parser) Eval(args []string) error {
 	positional := false
 	positionals := []string{}
 
+	// global flags
 	var globals *flagSet
 	if p.globalsEnabled {
 		globals = newFlagSet()
@@ -391,6 +396,21 @@ func (p *Parser) RegisterEnum(enumMap interface{}) {
 	}
 
 	p.enums[te] = enm
+}
+
+func (p *Parser) addRoot(in interface{}) *path {
+	p.roots = append(p.roots, reflect.ValueOf(in))
+	return &path{
+		root: &p.roots[len(p.roots)-1],
+	}
+}
+
+func (p *Parser) isHelp(arg string) bool {
+	return arg == p.helpLong || arg == p.helpShort
+}
+
+func (p *Parser) isVersion(arg string) bool {
+	return arg == p.versionLong || arg == p.versionShort
 }
 
 var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()

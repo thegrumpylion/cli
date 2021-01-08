@@ -51,3 +51,26 @@ func WithGlobalArgsEnabled() ParserOption {
 		p.globalsEnabled = true
 	}
 }
+
+// WithStructTags sets the struct tags to be used by this parser
+func WithStructTags(tags StructTags) ParserOption {
+	return func(p *Parser) {
+		p.tags = tags
+	}
+}
+
+// WithHelpFlags sets the help flags. Default --help,-h
+func WithHelpFlags(long, short string) ParserOption {
+	return func(p *Parser) {
+		p.helpLong = long
+		p.helpShort = short
+	}
+}
+
+// WithVersionFlags sets the version flags. Default --version
+func WithVersionFlags(long, short string) ParserOption {
+	return func(p *Parser) {
+		p.versionLong = long
+		p.versionShort = short
+	}
+}
