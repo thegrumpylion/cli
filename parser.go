@@ -33,6 +33,11 @@ type Parser struct {
 // NewParser create new parser
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
+		tags: StructTags{
+			Cli:     "cli",
+			Help:    "help",
+			Default: "default",
+		},
 		cmds:       map[string]*command{},
 		enums:      map[reflect.Type]map[string]interface{}{},
 		argCase:    CaseCamelLower,
@@ -101,6 +106,16 @@ func (p *Parser) Eval(args []string) error {
 	positional := false
 	positionals := []string{}
 
+	var globals *flagSet
+	if p.globalsEnabled {
+		globals = newFlagSet()
+		for _, a := range c.AllFlags() {
+			if a.global {
+				globals.Add(a)
+			}
+		}
+	}
+
 	for i := 0; i < len(args); i++ {
 
 		arg := args[i]
@@ -125,6 +140,14 @@ func (p *Parser) Eval(args []string) error {
 					return err
 				}
 				c = cc
+				// handle globals
+				if p.globalsEnabled {
+					for _, a := range c.AllFlags() {
+						if a.global {
+							globals.Add(a)
+						}
+					}
+				}
 				// add subcommand to execution list
 				p.execList = append(p.execList, c.path.Get())
 				continue
@@ -150,9 +173,17 @@ func (p *Parser) Eval(args []string) error {
 			compositeFlag = true
 		}
 
+		// find flag
 		a := c.GetFlag(arg)
 		if a == nil {
-			return ErrNoSuchFlag(arg)
+			if p.globalsEnabled {
+				fmt.Println("glob", globals.All())
+				if a = globals.Get(arg); a == nil {
+					return ErrNoSuchFlag(arg)
+				}
+			} else {
+				return ErrNoSuchFlag(arg)
+			}
 		}
 
 		// handle arrays and slices
@@ -442,16 +473,20 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		}
 
 		// check for global args propagation collision
-		if p.globalsEnabled && tag.global {
+		if p.globalsEnabled {
 			if globals.Has(long) {
-				panic("global args propagation collision")
+				panic("global args propagation collision: " + long)
 			}
-			globals.Add(long)
+			if tag.global {
+				globals.Add(long)
+			}
 			if short != "" {
 				if globals.Has(short) {
-					panic("global args propagation collision")
+					panic("global args propagation collision: " + short)
 				}
-				globals.Add(short)
+				if tag.global {
+					globals.Add(short)
+				}
 			}
 		}
 
@@ -464,6 +499,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 			env:        env,
 			required:   tag.required,
 			positional: tag.positional,
+			global:     tag.global,
 			def:        f.Tag.Get(p.tags.Default),
 			help:       f.Tag.Get(p.tags.Help),
 		}

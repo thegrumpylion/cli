@@ -435,3 +435,46 @@ func TestEnvDefaultCase(t *testing.T) {
 		fmt.Println(a.env)
 	}
 }
+
+func TestGlobals(t *testing.T) {
+	type subcmd struct {
+		A string
+		B int
+	}
+	args := &struct {
+		Subcmd *subcmd
+		G      string `cli:"global"`
+	}{}
+	p := NewParser(WithGlobalArgsEnabled())
+	p.NewRootCommand("root", args)
+	err := p.Eval([]string{"root", "subcmd", "--a", "a", "--b", "1", "--g", "global"})
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if args.G != "global" {
+		t.Fatal("--g != global")
+	}
+	if args.Subcmd.A != "a" {
+		t.Fatal("--a != a")
+	}
+	if args.Subcmd.B != 1 {
+		t.Fatal("--b != 1")
+	}
+}
+
+func TestGlobalsConflict(t *testing.T) {
+	type subcmd struct {
+		G string
+	}
+	args := &struct {
+		G      string `cli:"global"`
+		Subcmd *subcmd
+	}{}
+	p := NewParser(WithGlobalArgsEnabled())
+	defer func() {
+		if i := recover(); i == nil {
+			t.Fatal("should have paniced globals conflict")
+		}
+	}()
+	p.NewRootCommand("root", args)
+}
