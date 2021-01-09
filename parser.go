@@ -161,11 +161,11 @@ func (p *Parser) Eval(args []string) error {
 			continue
 		}
 
-		if arg == "-h" || arg == "--help" {
+		if p.isHelp(arg) {
 			// handle help
 		}
 
-		if arg == "--version" {
+		if p.isVersion(arg) {
 			// handle version
 		}
 
@@ -240,10 +240,19 @@ func (p *Parser) Eval(args []string) error {
 		values[a] = []string{val}
 	}
 
+	// add positionals to values
+	for _, a := range c.Positionals() {
+		if a.isArray {
+
+		}
+	}
+
+	// set all values
 	if err := p.setValues(values); err != nil {
 		return err
 	}
 
+	// check required
 	for _, a := range c.AllFlags() {
 		if a.required && !a.isSet {
 			return fmt.Errorf("required flag not set: %s", a.long)
