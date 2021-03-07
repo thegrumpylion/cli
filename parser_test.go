@@ -217,26 +217,6 @@ func TestSliceArg(t *testing.T) {
 	}
 }
 
-func TestArrayArg(t *testing.T) {
-	args := &struct {
-		Names [3]string
-	}{}
-
-	NewRootCommand("root", args)
-
-	err := Eval([]string{"root", "--names", "maria", "andreas", "giannis"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	vals := []string{"maria", "andreas", "giannis"}
-	for i, n := range vals {
-		if args.Names[i] != n {
-			t.Fatalf("%s not %s\n", args.Names[i], n)
-		}
-	}
-}
-
 type SubCmdA struct {
 	Name string
 }

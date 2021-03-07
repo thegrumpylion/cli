@@ -10,6 +10,7 @@ import (
 type path struct {
 	root *reflect.Value
 	path []string
+	val  *reflect.Value
 }
 
 func (p *path) Subpath(name string) *path {
@@ -20,6 +21,45 @@ func (p *path) Subpath(name string) *path {
 }
 
 func (p *path) Get() interface{} {
+	return p.value().Interface()
+}
+
+func (p *path) Set(i interface{}) error {
+	return func() error {
+		if r := recover(); r != nil {
+			return fmt.Errorf("error: %v", r)
+		}
+		p.valueDeref().Set(reflect.ValueOf(i))
+		return nil
+	}()
+}
+
+func (p *path) SetScalar(s string) error {
+	return setScalarValue(p.valueDeref(), s)
+}
+
+func (p *path) AppendToSlice(s string) error {
+	v := p.valueDeref()
+	e := reflect.New(v.Type().Elem()).Elem()
+	if err := setScalarValue(e, s); err != nil {
+		return err
+	}
+	v.Set(reflect.Append(v, e))
+	return nil
+}
+
+func (p *path) valueDeref() reflect.Value {
+	v := p.value()
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	return v
+}
+
+func (p *path) value() reflect.Value {
+	if p.val != nil {
+		return *p.val
+	}
 	v := *p.root
 	for _, s := range p.path {
 		if v.Kind() == reflect.Ptr {
@@ -33,64 +73,9 @@ func (p *path) Get() interface{} {
 	if v.Kind() == reflect.Ptr && v.IsNil() {
 		v.Set(reflect.New(v.Type().Elem()))
 	}
-	return v.Interface()
-}
-
-func (p *path) Set(i interface{}) error {
-	return func() error {
-		if r := recover(); r != nil {
-			return fmt.Errorf("error: %v", r)
-		}
-		p.value().Set(reflect.ValueOf(i))
-		return nil
-	}()
-}
-
-func (p *path) SetScalar(s string) error {
-	return setScalarValue(p.value(), s)
-}
-
-func (p *path) SetSlice(arr []string) error {
-	v := p.value()
-	for _, s := range arr {
-		e := reflect.New(v.Type().Elem()).Elem()
-		if err := setScalarValue(e, s); err != nil {
-			return err
-		}
-		v.Set(reflect.Append(v, e))
-	}
-	return nil
-}
-
-func (p *path) SetArray(arr []string) error {
-	v := p.value()
-	for i, s := range arr {
-		e := reflect.New(v.Type().Elem()).Elem()
-		if err := setScalarValue(e, s); err != nil {
-			return err
-		}
-		v.Index(i).Set(e)
-	}
-	return nil
-}
-
-func (p *path) value() reflect.Value {
-	v := *p.root
-	for _, s := range p.path {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-		v = v.FieldByName(s)
-	}
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
+	// cache
+	p.val = &reflect.Value{}
+	*p.val = v
 	return v
 }
 

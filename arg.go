@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"reflect"
 )
 
@@ -58,8 +59,6 @@ type argument struct {
 	enum       bool
 	iface      bool
 	isSlice    bool
-	isArray    bool
-	arrayLen   int
 	isSet      bool
 }
 
@@ -71,11 +70,11 @@ func (a *argument) setScalarValue(val string) error {
 	return a.path.SetScalar(val)
 }
 
-func (a *argument) setArrayValue(arr []string) error {
-	if a.isArray {
-		return a.path.SetArray(arr)
+func (a *argument) append(s string) error {
+	if a.isSlice {
+		return a.path.AppendToSlice(s)
 	}
-	return a.path.SetSlice(arr)
+	return fmt.Errorf("not an array or a slice")
 }
 
 func (a *argument) setValue(val interface{}) error {
