@@ -1,21 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/thegrumpylion/cnc"
 )
-
-type SubCmdA struct {
-	Name string
-	Enum MuhEnm
-}
-
-type SubCmdB struct {
-	Num int
-}
 
 type MuhEnm int
 
@@ -31,6 +23,28 @@ var enumMap = map[string]MuhEnm{
 	"tria": Tria,
 }
 
+type SubCmdA struct {
+	Name string
+	Enum MuhEnm
+}
+
+func (c *SubCmdA) Run(ctx context.Context) error {
+	fmt.Println("running subcmda")
+	fmt.Println("name", c.Name)
+	fmt.Println("enum", c.Enum)
+	return nil
+}
+
+type SubCmdB struct {
+	Num int
+}
+
+func (c *SubCmdB) Run(ctx context.Context) error {
+	fmt.Println("running subcmdb")
+	fmt.Println("num", c.Num)
+	return nil
+}
+
 type RootCmd struct {
 	SubA   *SubCmdA
 	SubB   *SubCmdB
@@ -38,20 +52,31 @@ type RootCmd struct {
 	Number int
 	Flag   bool
 	File   string `complete:"files"`
+	Host   string `complete:"hosts"`
+}
+
+func (c *RootCmd) Run(ctx context.Context) error {
+	fmt.Println("running rootcmd")
+	fmt.Println("name", c.Name)
+	fmt.Println("number", c.Number)
+	fmt.Println("flag", c.Flag)
+	fmt.Println("file", c.File)
+	fmt.Println("host", c.Host)
+	return nil
 }
 
 func main() {
 	cnc.RegisterEnum(enumMap)
+
 	c := &RootCmd{}
+
 	cnc.NewRootCommand(filepath.Base(os.Args[0]), c)
-	err := cnc.Eval(os.Args)
-	if err != nil {
+
+	if err := cnc.Eval(os.Args); err != nil {
 		panic(err)
 	}
-	fmt.Println("c.Name", c.Name)
-	fmt.Println("c.Number", c.Number)
-	fmt.Println("c.Flag", c.Flag)
-	fmt.Println("c.SubA.Name", c.SubA.Name)
-	fmt.Println("c.SubA.Enum", c.SubA.Enum)
-	fmt.Println("c.SubB.Num", c.SubB.Num)
+
+	if err := cnc.Execute(context.Background()); err != nil {
+		panic(err)
+	}
 }
