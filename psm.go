@@ -184,9 +184,8 @@ func (sm *stateMachine) valueState(s string, t Token) (StateFunc, error) {
 		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
 	}
 	a := sm.curArg
-	if a.enum {
-		em := sm.p.enums[a.typ]
-		if err := a.SetValue(em[strings.ToLower(s)]); err != nil {
+	if a.enum != nil {
+		if err := a.SetValue(a.enum.Value(s)); err != nil {
 			return nil, err
 		}
 		return sm.entryState, nil

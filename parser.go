@@ -19,7 +19,7 @@ type Parser struct {
 	tags           StructTags
 	roots          []reflect.Value
 	cmds           map[string]*command
-	enums          map[reflect.Type]map[string]interface{}
+	enums          map[reflect.Type]*enum
 	globalsEnabled bool
 	argCase        Case
 	envCase        Case
@@ -49,7 +49,7 @@ type Parser struct {
 func NewParser(opts ...ParserOption) *Parser {
 	p := &Parser{
 		cmds:        map[string]*command{},
-		enums:       map[reflect.Type]map[string]interface{}{},
+		enums:       map[reflect.Type]*enum{},
 		argCase:     CaseCamelLower,
 		envCase:     CaseSnakeUpper,
 		cmdCase:     CaseLower,
@@ -140,32 +140,8 @@ func RegisterEnum(enumMap interface{}) {
 // RegisterEnum resgister an enum map. map must have string key and int/uint
 // value. The value must also be a custom type e.g. type MyEnum uint32
 func (p *Parser) RegisterEnum(enumMap interface{}) {
-	v := reflect.ValueOf(enumMap)
-	t := reflect.TypeOf(enumMap)
-	if t.Kind() != reflect.Map {
-		panic("enumMap must be a map")
-	}
-
-	// key is the string of enum
-	if t.Key().Kind() != reflect.String {
-		panic("enumMap key must be string")
-	}
-
-	// element is enum int/uint custom type
-	te := t.Elem()
-	if te.PkgPath() == "" {
-		panic("enumMap element must be custom type")
-	}
-	if !(isInt(te) || isUint(te)) {
-		panic("enumMap element must be int/uint")
-	}
-
-	enm := map[string]interface{}{}
-	for _, k := range v.MapKeys() {
-		enm[strings.ToLower(k.String())] = v.MapIndex(k).Interface()
-	}
-
-	p.enums[te] = enm
+	enm := newEnum(enumMap)
+	p.enums[enm.typ] = enm
 }
 
 func (p *Parser) addRoot(in interface{}) *path {
@@ -311,8 +287,8 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 
 		// check for enums
 		if isInt(fldType) || isUint(fldType) {
-			if _, ok := p.enums[fldType]; ok {
-				a.enum = true
+			if enm, ok := p.enums[fldType]; ok {
+				a.enum = enm
 			}
 		}
 	}

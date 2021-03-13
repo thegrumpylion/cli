@@ -72,7 +72,7 @@ type argument struct {
 	positional bool
 	required   bool
 	separate   bool
-	enum       bool
+	enum       *enum
 	iface      bool
 	isSlice    bool
 	isSet      bool
@@ -101,6 +101,9 @@ func (a *argument) SetValue(val interface{}) error {
 func (a *argument) Complete(val string) (out []string) {
 	for _, f := range a.completers {
 		out = append(out, f(val)...)
+	}
+	if a.enum != nil {
+		out = append(out, a.enum.Complete(val)...)
 	}
 	sort.Strings(out)
 	return
