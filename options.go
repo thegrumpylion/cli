@@ -1,4 +1,4 @@
-package cli
+package cnc
 
 // ParserOption option type for Parser
 type ParserOption func(p *Parser)

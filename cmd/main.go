@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/thegrumpylion/cli"
+	"github.com/thegrumpylion/cnc"
 )
 
 type SubCmdA struct {
@@ -40,10 +40,10 @@ type RootCmd struct {
 }
 
 func main() {
-	cli.RegisterEnum(enumMap)
+	cnc.RegisterEnum(enumMap)
 	c := &RootCmd{}
-	cli.NewRootCommand(filepath.Base(os.Args[0]), c)
-	err := cli.Eval(os.Args)
+	cnc.NewRootCommand(filepath.Base(os.Args[0]), c)
+	err := cnc.Eval(os.Args)
 	if err != nil {
 		panic(err)
 	}
