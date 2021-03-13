@@ -1,13 +1,16 @@
 package cli
 
 import (
-	"context"
 	"encoding"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
+	"github.com/kballard/go-shellquote"
 	"github.com/scylladb/go-set/strset"
 )
 
@@ -31,6 +34,9 @@ type Parser struct {
 	versionShort   string
 	strategy       OnErrorStrategy
 	execList       []interface{}
+	helpOut        io.Writer
+	errorOut       io.Writer
+	completeOut    io.Writer
 
 	globals *flagSet
 	curArg  *argument
@@ -65,6 +71,10 @@ func NewParser(opts ...ParserOption) *Parser {
 	if p.tags.Default == "" {
 		p.tags.Default = "default"
 	}
+	if p.globalsEnabled {
+		p.globals = newFlagSet()
+	}
+	p.completeOut = os.Stdout
 	return p
 }
 
@@ -95,50 +105,109 @@ func Eval(args []string) error {
 	return defaultParser.Eval(args)
 }
 
-// Eval marshal string args to struct
-func (p *Parser) Eval(args []string) error {
+func isCompletion() bool {
+	_, lok := os.LookupEnv("COMP_LINE")
+	_, pok := os.LookupEnv("COMP_POINT")
+	return lok && pok
+}
 
-	c, ok := p.cmds[args[0]]
-	if !ok {
-		// try base path
-		c, ok = p.cmds[filepath.Base(args[0])]
-		if !ok {
-			return ErrCommandNotFound(args[0])
+func parseCompletion(args []string) ([]string, bool, error) {
+	line := os.Getenv("COMP_LINE")
+	pointS := os.Getenv("COMP_POINT")
+	point, err := strconv.Atoi(pointS)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(line) > point {
+		line = line[:point]
+	}
+	wrds, err := shellquote.Split(line)
+	if err != nil {
+		return nil, false, err
+	}
+	isLastSpace := line[len(line)-1] == ' '
+	return wrds, isLastSpace, nil
+}
+
+// Eval marshal string args to struct
+func (p *Parser) Eval(args []string) (err error) {
+
+	isComp := isCompletion()
+	isLastSpace := false
+
+	if isComp {
+		args, isLastSpace, err = parseCompletion(args)
+		if err != nil {
+			os.Exit(0)
 		}
 	}
-	p.curCmd = c
 
-	// add root command to execution list
-	p.execList = append(p.execList, c.path.Get())
+	c, err := p.findRootCommand(args[0])
+	if err != nil {
+		if isComp {
+			os.Exit(0)
+		}
+		return err
+	}
+	p.setCurrentCmd(c)
 
 	args = args[1:]
-
-	// global flags
-	if p.globalsEnabled {
-		p.globals = newFlagSet()
-		for _, a := range c.AllFlags() {
-			if a.global {
-				p.globals.Add(a)
-			}
-		}
-	}
-
 	state := p.entryState
-	var err error
+	var t, lt Token
 
-	for i := 0; i < len(args); i++ {
-
-		arg := args[i]
-
-		t := tokenType(arg)
+	for _, a := range args {
+		lt = t
+		t = tokenType(a)
 		if p.allPos {
 			t = VAL
 		}
-
-		state, err = state(arg, t)
+		state, err = state(a, t)
 		if err != nil {
+			if isComp {
+				break
+			}
 			return err
 		}
+	}
+	// t        | spc   | lt    | isBool |
+	//----------------------------------------
+	// COMPFLAG | TRUE  | -     | -      | completeCurrentCmd("")
+	// COMPFLAG | FALSE | -     | -      | completeCurrentArg(splitComp(LIT))
+	// FLAG     | TRUE  | -     | TRUE   | completeCurrentCmd("")
+	// FLAG     | FALSE | -     | -      | completeCurrentCmd(LIT)
+	// FLAG     | TRUE  | -     | FALSE  | completeCurrentArg("")
+	// VAL      | TRUE  | -     | -      | completeCurrentCmd("")
+	// VAL      | FALSE | VAL   | -      | completeCurrentCmd(LIT)
+	// VAL      | FALSE | FLAG  | TRUE   | completeCurrentCmd(LIT)
+	// VAL      | FALSE | FLAG  | FALSE  | completeCurrentArg(LIT)
+	if isComp {
+		if p.allPos && args[len(args)-1] != "--" {
+			os.Exit(0)
+		}
+		completer := p.curCmd.Complete
+		var val string
+		if !isLastSpace {
+			val = args[len(args)-1]
+		}
+		switch t {
+		case COMPFLAG:
+			if !isLastSpace {
+				_, val = splitCompositeFlag(val)
+				completer = p.curArg.Complete
+			}
+		case FLAG:
+			if isLastSpace && !p.curArg.IsBool() {
+				completer = p.curArg.Complete
+			}
+		case VAL:
+			if !isLastSpace && lt == FLAG && !p.curArg.IsBool() {
+				completer = p.curArg.Complete
+			}
+		}
+		for _, v := range completer(val) {
+			fmt.Fprintln(p.completeOut, v)
+		}
+		os.Exit(0)
 	}
 
 	// check required
@@ -151,81 +220,12 @@ func (p *Parser) Eval(args []string) error {
 	return nil
 }
 
-// Execute the chain of commands in default parser
-func Execute(ctx context.Context) error {
-	return defaultParser.Execute(ctx)
+func (p *Parser) completeCurCmd(v string) {
+
 }
 
-// Execute the chain of commands
-func (p *Parser) Execute(ctx context.Context) error {
+func (p *Parser) completeCurArg(v string) {
 
-	var err error
-	lastCmd := len(p.execList) - 1
-	pPostRunners := []PersistentPostRunner{}
-
-	for i, inf := range p.execList {
-		// PersistentPostRun pushed on a stack to run in a reverse order
-		if rnr, ok := inf.(PersistentPostRunner); ok {
-			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
-		}
-		// PersistentPreRun
-		if rnr, ok := inf.(PersistentPreRunner); ok {
-			err = rnr.PersistentPreRun(ctx)
-			if err != nil {
-				if !(p.strategy == OnErrorContinue) {
-					break
-				}
-				ctx = context.WithValue(ctx, lastErrorKey{}, err)
-			}
-		}
-		if i == lastCmd {
-			// PreRun
-			if rnr, ok := inf.(PreRunner); ok {
-				err = rnr.PreRun(ctx)
-				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
-						break
-					}
-					ctx = context.WithValue(ctx, lastErrorKey{}, err)
-				}
-			}
-			// Run
-			if rnr, ok := inf.(Runner); ok {
-				err = rnr.Run(ctx)
-				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
-						break
-					}
-					ctx = context.WithValue(ctx, lastErrorKey{}, err)
-				}
-			}
-			// PostRun
-			if rnr, ok := inf.(PostRunner); ok {
-				err = rnr.PostRun(ctx)
-				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
-						break
-					}
-					ctx = context.WithValue(ctx, lastErrorKey{}, err)
-				}
-			}
-		}
-	}
-	// check for error and strategy
-	if err != nil && p.strategy == OnErrorBreak {
-		return err
-	}
-	// PersistentPostRun
-	for _, rnr := range pPostRunners {
-		err = rnr.PersistentPostRun(ctx)
-		if err != nil {
-			if p.strategy == OnErrorPostRunners {
-				return err
-			}
-			ctx = context.WithValue(ctx, lastErrorKey{}, err)
-		}
-	}
-	return err
 }
 
 // RegisterEnum resgister an enum map to the default parser
@@ -288,13 +288,13 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 	for i := 0; i < t.NumField(); i++ {
 
 		// get field
-		f := t.Field(i)
-		fldName := f.Name
-		fldType := f.Type
+		fld := t.Field(i)
+		fldName := fld.Name
+		fldType := fld.Type
 
 		// get and parse cli tag
 		var tag *clitag
-		tg := f.Tag.Get(p.tags.Cli)
+		tg := fld.Tag.Get(p.tags.Cli)
 		if tg == "-" {
 			continue
 		}
@@ -323,7 +323,7 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 
 		if isStruct(fldType) && !fldType.Implements(textUnmarshaler) {
 			// embedded struct parse as args of parent
-			if f.Anonymous {
+			if fld.Anonymous {
 				p.walkStruct(c, fldType, spth, pfx, envpfx, isArg, globals)
 				continue
 			}
@@ -386,8 +386,8 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 			required:   tag.required,
 			positional: tag.positional,
 			global:     tag.global,
-			def:        f.Tag.Get(p.tags.Default),
-			help:       f.Tag.Get(p.tags.Help),
+			def:        fld.Tag.Get(p.tags.Default),
+			help:       fld.Tag.Get(p.tags.Help),
 		}
 		c.AddArg(a)
 
@@ -412,6 +412,31 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 			}
 		}
 	}
+}
+
+func (p *Parser) setCurrentCmd(c *command) {
+	p.curCmd = c
+	if p.globalsEnabled {
+		for _, a := range p.curCmd.AllFlags() {
+			if a.global {
+				p.globals.Add(a)
+			}
+		}
+	}
+	// add subcommand to execution list
+	p.execList = append(p.execList, p.curCmd.path.Get())
+}
+
+func (p *Parser) findRootCommand(name string) (*command, error) {
+	c, ok := p.cmds[name]
+	if !ok {
+		// try base path
+		c, ok = p.cmds[filepath.Base(name)]
+		if !ok {
+			return nil, ErrCommandNotFound{name}
+		}
+	}
+	return c, nil
 }
 
 func isFlag(s string) bool {
@@ -458,19 +483,9 @@ func (p *Parser) valueOrCmdState(s string, t Token) (StateFunc, error) {
 	if p.curCmd.subcmd != nil {
 		cc, ok := p.curCmd.subcmd[s]
 		if !ok {
-			return nil, ErrCommandNotFound(s)
+			return nil, ErrCommandNotFound{s}
 		}
-		p.curCmd = cc
-		// handle globals
-		if p.globalsEnabled {
-			for _, a := range p.curCmd.AllFlags() {
-				if a.global {
-					p.globals.Add(a)
-				}
-			}
-		}
-		// add subcommand to execution list
-		p.execList = append(p.execList, p.curCmd.path.Get())
+		p.setCurrentCmd(cc)
 		return p.entryState, nil
 	}
 	if p.curPos == len(p.curCmd.positionals) {
@@ -491,7 +506,7 @@ func (p *Parser) valueState(s string, t Token) (StateFunc, error) {
 	a := p.curArg
 	if a.enum {
 		em := p.enums[a.typ]
-		if err := a.setValue(em[strings.ToLower(s)]); err != nil {
+		if err := a.SetValue(em[strings.ToLower(s)]); err != nil {
 			return nil, err
 		}
 		return p.entryState, nil
@@ -502,7 +517,7 @@ func (p *Parser) valueState(s string, t Token) (StateFunc, error) {
 		}
 		return p.entryState, nil
 	}
-	if err := p.curArg.setScalarValue(s); err != nil {
+	if err := p.curArg.SetScalarValue(s); err != nil {
 		return nil, err
 	}
 	return p.entryState, nil
@@ -512,7 +527,7 @@ func (p *Parser) sliceValueState(s string, t Token) (StateFunc, error) {
 		return nil, fmt.Errorf("unexpected token: %d at sliceValueState", t)
 	}
 	a := p.curArg
-	if err := a.append(s); err != nil {
+	if err := a.Append(s); err != nil {
 		return nil, err
 	}
 	if a.separate {
@@ -535,14 +550,14 @@ func (p *Parser) flagState(s string, t Token) (StateFunc, error) {
 	if a == nil {
 		if p.globalsEnabled {
 			if a = p.globals.Get(s); a == nil {
-				return nil, ErrNoSuchFlag(s)
+				return nil, ErrNoSuchFlag{s}
 			}
 		} else {
-			return nil, ErrNoSuchFlag(s)
+			return nil, ErrNoSuchFlag{s}
 		}
 	}
 	p.curArg = a
-	if a.isBool() {
+	if a.IsBool() {
 		return p.valueState("true", VAL)
 	}
 	if a.isSlice {
@@ -563,10 +578,10 @@ func (p *Parser) compositFlagState(s string, t Token) (StateFunc, error) {
 		if p.globalsEnabled {
 			fmt.Println("glob", p.globals.All())
 			if a = p.globals.Get(s); a == nil {
-				return nil, ErrNoSuchFlag(s)
+				return nil, ErrNoSuchFlag{s}
 			}
 		} else {
-			return nil, ErrNoSuchFlag(s)
+			return nil, ErrNoSuchFlag{s}
 		}
 	}
 	p.curArg = a
@@ -590,4 +605,16 @@ func tokenType(s string) Token {
 		return ALLPOS
 	}
 	return VAL
+}
+
+func splitCompositeFlag(s string) (string, string) {
+	i := strings.Index(s, "=")
+	if i == -1 {
+		return s, ""
+	}
+	flg := s[:i]
+	if i == len(s)-1 {
+		return flg, ""
+	}
+	return flg, s[i+1:]
 }

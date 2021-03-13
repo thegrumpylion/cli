@@ -2,7 +2,21 @@ package cli
 
 import "fmt"
 
-var ErrCommandNotFound = func(cmd string) error { return fmt.Errorf("command not found: %s", cmd) }
-var ErrNoSuchFlag = func(flg string) error { return fmt.Errorf("no such flag: %s", flg) }
 var ErrInvalidFlag = func(flg string) error { return fmt.Errorf("invalid flag: %s", flg) }
 var ErrInvalidValue = func(val, flg string) error { return fmt.Errorf("invalid value: %s for flag: %s", val, flg) }
+
+type ErrCommandNotFound struct {
+	Command string
+}
+
+func (e ErrCommandNotFound) Error() string {
+	return fmt.Sprintf("command not found: %s", e.Command)
+}
+
+type ErrNoSuchFlag struct {
+	Flag string
+}
+
+func (e ErrNoSuchFlag) Error() string {
+	return fmt.Sprintf("no such flag: %s", e.Flag)
+}

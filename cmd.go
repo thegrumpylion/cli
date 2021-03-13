@@ -1,5 +1,10 @@
 package cli
 
+import (
+	"sort"
+	"strings"
+)
+
 type command struct {
 	path        *path
 	parent      *command
@@ -40,4 +45,27 @@ func (c *command) AddSubcommand(name string, p *path) *command {
 	}
 	c.subcmd[name] = sc
 	return sc
+}
+
+func (c *command) LookupSubcommand(name string) (sc *command, ok bool) {
+	sc, ok = c.subcmd[name]
+	return
+}
+
+func (c *command) Complete(val string) (out []string) {
+	for sc := range c.subcmd {
+		if strings.HasPrefix(sc, val) {
+			out = append(out, sc)
+		}
+	}
+	for _, v := range c.AllFlags() {
+		if strings.HasPrefix(v.long, val) {
+			out = append(out, v.long)
+		}
+		if v.short != "" && strings.HasPrefix(v.short, val) {
+			out = append(out, v.short)
+		}
+	}
+	sort.Strings(out)
+	return
 }

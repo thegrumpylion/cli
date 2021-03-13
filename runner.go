@@ -64,3 +64,80 @@ func isRunner(t reflect.Type) bool {
 		t.Implements(persistentPreRunnerType) || t.Implements(postRunnerType) ||
 		t.Implements(persistentPostRunnerType)
 }
+
+// Execute the chain of commands in default parser
+func Execute(ctx context.Context) error {
+	return defaultParser.Execute(ctx)
+}
+
+// Execute the chain of commands
+func (p *Parser) Execute(ctx context.Context) error {
+
+	var err error
+	lastCmd := len(p.execList) - 1
+	pPostRunners := []PersistentPostRunner{}
+
+	for i, inf := range p.execList {
+		// PersistentPostRun pushed on a stack to run in a reverse order
+		if rnr, ok := inf.(PersistentPostRunner); ok {
+			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
+		}
+		// PersistentPreRun
+		if rnr, ok := inf.(PersistentPreRunner); ok {
+			err = rnr.PersistentPreRun(ctx)
+			if err != nil {
+				if !(p.strategy == OnErrorContinue) {
+					break
+				}
+				ctx = context.WithValue(ctx, lastErrorKey{}, err)
+			}
+		}
+		if i == lastCmd {
+			// PreRun
+			if rnr, ok := inf.(PreRunner); ok {
+				err = rnr.PreRun(ctx)
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
+				}
+			}
+			// Run
+			if rnr, ok := inf.(Runner); ok {
+				err = rnr.Run(ctx)
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
+				}
+			}
+			// PostRun
+			if rnr, ok := inf.(PostRunner); ok {
+				err = rnr.PostRun(ctx)
+				if err != nil {
+					if !(p.strategy == OnErrorContinue) {
+						break
+					}
+					ctx = context.WithValue(ctx, lastErrorKey{}, err)
+				}
+			}
+		}
+	}
+	// check for error and strategy
+	if err != nil && p.strategy == OnErrorBreak {
+		return err
+	}
+	// PersistentPostRun
+	for _, rnr := range pPostRunners {
+		err = rnr.PersistentPostRun(ctx)
+		if err != nil {
+			if p.strategy == OnErrorPostRunners {
+				return err
+			}
+			ctx = context.WithValue(ctx, lastErrorKey{}, err)
+		}
+	}
+	return err
+}

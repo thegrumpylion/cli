@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strings"
 )
 
 func newFlagSet() *flagSet {
@@ -44,6 +46,20 @@ func (fs *flagSet) All() []*argument {
 	return fs.all
 }
 
+func (fs *flagSet) Autocomplete(val string) []string {
+	flags := []string{}
+	for _, f := range fs.all {
+		if strings.HasPrefix(f.long, val) {
+			flags = append(flags, f.long)
+		}
+		if strings.HasPrefix(f.short, val) {
+			flags = append(flags, f.short)
+		}
+	}
+	sort.Strings(flags)
+	return flags
+}
+
 type argument struct {
 	path       *path
 	typ        reflect.Type
@@ -60,23 +76,32 @@ type argument struct {
 	iface      bool
 	isSlice    bool
 	isSet      bool
+	completers []func(val string) []string
 }
 
-func (a *argument) isBool() bool {
+func (a *argument) IsBool() bool {
 	return a.typ.Kind() == reflect.Bool
 }
 
-func (a *argument) setScalarValue(val string) error {
+func (a *argument) SetScalarValue(val string) error {
 	return a.path.SetScalar(val)
 }
 
-func (a *argument) append(s string) error {
+func (a *argument) Append(s string) error {
 	if a.isSlice {
 		return a.path.AppendToSlice(s)
 	}
 	return fmt.Errorf("not an array or a slice")
 }
 
-func (a *argument) setValue(val interface{}) error {
+func (a *argument) SetValue(val interface{}) error {
 	return a.path.Set(val)
+}
+
+func (a *argument) Complete(val string) (out []string) {
+	for _, f := range a.completers {
+		out = append(out, f(val)...)
+	}
+	sort.Strings(out)
+	return
 }
