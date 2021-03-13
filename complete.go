@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-type Autocompleter interface {
-	Autocomplete(val string) []string
+type Completer interface {
+	Complete(val string) []string
 }
 
 var filesAutocompleter = func(val string) []string {

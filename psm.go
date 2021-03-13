@@ -114,18 +114,18 @@ func (sm *stateMachine) Run(args []string) (err error) {
 		if sm.allPos {
 			os.Exit(0)
 		}
-		completer := sm.curCmd.Complete
+		var completer Completer = sm.curCmd
 		val := args[len(args)-1]
 		switch t {
 		case COMPFLAG:
 			_, val = splitCompositeFlag(val)
-			completer = sm.curArg.Complete
+			completer = sm.curArg
 		case VAL:
 			if lt == FLAG && !sm.curArg.IsBool() {
-				completer = sm.curArg.Complete
+				completer = sm.curArg
 			}
 		}
-		for _, v := range completer(val) {
+		for _, v := range completer.Complete(val) {
 			fmt.Fprintln(sm.p.completeOut, v)
 		}
 		os.Exit(0)
