@@ -33,16 +33,16 @@ type Parser struct {
 	versionLong    string
 	versionShort   string
 	strategy       OnErrorStrategy
-	execList       []interface{}
 	helpOut        io.Writer
 	errorOut       io.Writer
 	completeOut    io.Writer
 
-	globals *flagSet
-	curArg  *argument
-	curCmd  *command
-	curPos  int
-	allPos  bool
+	execList []interface{}
+	globals  *flagSet
+	curArg   *argument
+	curCmd   *command
+	curPos   int
+	allPos   bool
 }
 
 // NewParser create new parser
@@ -448,17 +448,6 @@ func isFlag(s string) bool {
 	}
 	return false
 }
-
-type Token int
-
-const (
-	VAL Token = iota
-	FLAG
-	COMPFLAG
-	ALLPOS
-)
-
-type StateFunc func(s string, t Token) (StateFunc, error)
 
 func (p *Parser) entryState(s string, t Token) (StateFunc, error) {
 	switch t {
