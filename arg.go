@@ -76,7 +76,7 @@ type argument struct {
 	iface      bool
 	isSlice    bool
 	isSet      bool
-	completers []func(val string) []string
+	completers []Completer
 }
 
 func (a *argument) IsBool() bool {
@@ -99,11 +99,11 @@ func (a *argument) SetValue(val interface{}) error {
 }
 
 func (a *argument) Complete(val string) (out []string) {
-	for _, f := range a.completers {
-		out = append(out, f(val)...)
-	}
 	if a.enum != nil {
-		out = append(out, a.enum.Complete(val)...)
+		return a.enum.Complete(val)
+	}
+	for _, f := range a.completers {
+		out = append(out, f.Complete(val)...)
 	}
 	sort.Strings(out)
 	return

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-func TestAutocompleteFiles(t *testing.T) {
-	fmt.Println(filesAutocompleter("./a"))
-	fmt.Println(filesAutocompleter("bash/t"))
+func TestCompleteFiles(t *testing.T) {
+	fmt.Println(filesCompleter("./a"))
+	fmt.Println(filesCompleter("bash/t"))
 }
 
-func TestAutocompleteHosts(t *testing.T) {
-	fmt.Println(hostsAutocompleter("ip6-"))
+func TestCompleteHosts(t *testing.T) {
+	fmt.Println(hostsCompleter("ip6-"))
 }
 
-func TestAutocompleteFlags(t *testing.T) {
+func TestCompleteFlags(t *testing.T) {
 	s := []string{"--base", "-c", "--able", "-b", "-a", "--dive", "--card"}
 	sort.Strings(s)
 	fmt.Println(s)

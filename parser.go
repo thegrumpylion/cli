@@ -71,6 +71,9 @@ func NewParser(opts ...ParserOption) *Parser {
 	if p.tags.Default == "" {
 		p.tags.Default = "default"
 	}
+	if p.tags.Complete == "" {
+		p.tags.Complete = "complete"
+	}
 	if p.globalsEnabled {
 		p.globals = newFlagSet()
 	}
@@ -289,6 +292,17 @@ func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx s
 		if isInt(fldType) || isUint(fldType) {
 			if enm, ok := p.enums[fldType]; ok {
 				a.enum = enm
+			}
+		}
+
+		// completers
+		if val, ok := fld.Tag.Lookup(p.tags.Complete); ok {
+			for _, v := range strings.Split(val, ",") {
+				cmp := getNamedCompleter((v))
+				if cmp == nil {
+					panic("no such completer: " + v)
+				}
+				a.completers = append(a.completers, cmp)
 			}
 		}
 	}

@@ -102,14 +102,6 @@ func (sm *stateMachine) Run(args []string) (err error) {
 			return err
 		}
 	}
-	// t        | tl   | isBool | action
-	// --------------------------------------------
-	// VAL      | FLAG | FALSE  | compArg(LV)
-	// VAL      | FLAG | TRUE   | compCmd(LV)
-	// CMD      | -    | -      | compCmd(LV)
-	// FLAG     | -    | -      | compCmd(LV)
-	// COMPFLAG | -    | -      | compArg(split(LV))
-	// ALLPOS   | -    | -      | compCmd(LV)
 	if sm.isComp {
 		if sm.allPos {
 			os.Exit(0)
@@ -118,15 +110,21 @@ func (sm *stateMachine) Run(args []string) (err error) {
 		val := args[len(args)-1]
 		switch t {
 		case COMPFLAG:
-			_, val = splitCompositeFlag(val)
-			completer = sm.curArg
+			fg, vl := splitCompositeFlag(val)
+			flg := sm.curCmd.GetFlag(fg)
+			if flg != nil {
+				completer = flg
+				val = vl
+			}
 		case VAL:
 			if lt == FLAG && !sm.curArg.IsBool() {
 				completer = sm.curArg
 			}
 		}
-		for _, v := range completer.Complete(val) {
-			fmt.Fprintln(sm.p.completeOut, v)
+		if completer != nil {
+			for _, v := range completer.Complete(val) {
+				fmt.Fprintln(sm.p.completeOut, v)
+			}
 		}
 		os.Exit(0)
 	}

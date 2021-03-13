@@ -37,6 +37,7 @@ type RootCmd struct {
 	Name   string
 	Number int
 	Flag   bool
+	File   string `complete:"files"`
 }
 
 func main() {

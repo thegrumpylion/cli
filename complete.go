@@ -6,11 +6,36 @@ import (
 	"strings"
 )
 
+var namedCompleteres = map[string]Completer{
+	"files": NewFuncCmpleter(filesCompleter),
+	"hosts": NewFuncCmpleter(hostsCompleter),
+}
+
+func RegisterNamedCompleter(name string, comp Completer) {
+	namedCompleteres[name] = comp
+}
+
+func getNamedCompleter(name string) Completer {
+	return namedCompleteres[name]
+}
+
 type Completer interface {
 	Complete(val string) []string
 }
 
-var filesAutocompleter = func(val string) []string {
+type FuncCompleter struct {
+	f func(val string) []string
+}
+
+func (fc *FuncCompleter) Complete(val string) []string {
+	return fc.f(val)
+}
+
+func NewFuncCmpleter(f func(val string) []string) *FuncCompleter {
+	return &FuncCompleter{f}
+}
+
+var filesCompleter = func(val string) []string {
 	d, f := filepath.Split(val)
 	if d == "" {
 		d = "."
@@ -33,7 +58,7 @@ var filesAutocompleter = func(val string) []string {
 	return out
 }
 
-var hostsAutocompleter = func(val string) []string {
+var hostsCompleter = func(val string) []string {
 	data, err := ioutil.ReadFile("/etc/hosts")
 	if err != nil {
 		return nil

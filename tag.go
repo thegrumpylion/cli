@@ -6,9 +6,10 @@ import (
 
 // StructTags struct tags values
 type StructTags struct {
-	Cli     string
-	Default string
-	Help    string
+	Cli      string
+	Default  string
+	Help     string
+	Complete string
 }
 
 type clitag struct {
