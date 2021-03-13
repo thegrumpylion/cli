@@ -5,36 +5,35 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/kballard/go-shellquote"
 )
 
-func newStateMachine(isCompletion, globalsEnabled bool) *stateMachine {
+func newStateMachine(p *Parser) *stateMachine {
 	sm := &stateMachine{
-		globalsEnabled: globalsEnabled,
-		isComp:         isCompletion,
+		p:         p,
+		expectCmd: true,
 	}
-	if globalsEnabled {
+	if p.globalsEnabled {
 		sm.globals = newFlagSet()
 	}
 	return sm
 }
 
 type stateMachine struct {
-	globalsEnabled bool
-	enums          map[reflect.Type]map[string]interface{}
-	globals        *flagSet
-	curArg         *argument
-	curCmd         *command
-	curPos         int
-	allPos         bool
-	execList       []interface{}
-	isComp         bool
-	completeOut    io.Writer
-	isLastSpace    bool
+	p           *Parser
+	globals     *flagSet
+	curArg      *argument
+	curCmd      *command
+	curPos      int
+	allPos      bool
+	execList    []interface{}
+	isComp      bool
+	completeOut io.Writer
+	isLast      bool
+	expectCmd   bool
 }
 
 type Token int
@@ -49,13 +48,9 @@ const (
 
 type StateFunc func(s string, t Token) (StateFunc, error)
 
-func (sm *stateMachine) SetEnums(em map[reflect.Type]map[string]interface{}) {
-	sm.enums = em
-}
-
 func (sm *stateMachine) SetCurrentCmd(c *command) {
 	sm.curCmd = c
-	if sm.globalsEnabled {
+	if sm.p.globalsEnabled {
 		for _, a := range sm.curCmd.AllFlags() {
 			if a.global {
 				sm.globals.Add(a)
@@ -67,50 +62,71 @@ func (sm *stateMachine) SetCurrentCmd(c *command) {
 }
 
 func (sm *stateMachine) Run(args []string) (err error) {
+
+	isComp := isCompletion()
+	if isComp {
+		sm.isComp = true
+		args, err = parseCompletion(args)
+		if err != nil {
+			os.Exit(0)
+		}
+	}
+
+	c, err := sm.p.findRootCommand(args[0])
+	if err != nil {
+		if isComp {
+			os.Exit(0)
+		}
+		return err
+	}
+	sm.SetCurrentCmd(c)
+
+	args = args[1:]
 	state := sm.entryState
 	var t, lt Token
 
-	for _, a := range args {
+	for i, a := range args {
 		lt = t
-		t = tokenType(a)
+		t = sm.tokenType(a)
 		if sm.allPos {
 			t = VAL
 		}
+		if sm.isComp && i == len(args)-1 {
+			break
+		}
 		state, err = state(a, t)
 		if err != nil {
-			if sm.isComp {
-				break
+			if isComp {
+				os.Exit(0)
 			}
 			return err
 		}
 	}
-
+	// t        | tl   | isBool | action
+	// --------------------------------------------
+	// VAL      | FLAG | FALSE  | compArg(LV)
+	// VAL      | FLAG | TRUE   | compCmd(LV)
+	// CMD      | -    | -      | compCmd(LV)
+	// FLAG     | -    | -      | compCmd(LV)
+	// COMPFLAG | -    | -      | compArg(split(LV))
+	// ALLPOS   | -    | -      | compCmd(LV)
 	if sm.isComp {
-		if sm.allPos && args[len(args)-1] != "--" {
+		if sm.allPos {
 			os.Exit(0)
 		}
 		completer := sm.curCmd.Complete
-		var val string
-		if !sm.isLastSpace {
-			val = args[len(args)-1]
-		}
+		val := args[len(args)-1]
 		switch t {
 		case COMPFLAG:
-			if !sm.isLastSpace {
-				_, val = splitCompositeFlag(val)
-				completer = sm.curArg.Complete
-			}
-		case FLAG:
-			if sm.isLastSpace && !sm.curArg.IsBool() {
-				completer = sm.curArg.Complete
-			}
+			_, val = splitCompositeFlag(val)
+			completer = sm.curArg.Complete
 		case VAL:
-			if !sm.isLastSpace && lt == FLAG && !sm.curArg.IsBool() {
+			if lt == FLAG && !sm.curArg.IsBool() {
 				completer = sm.curArg.Complete
 			}
 		}
 		for _, v := range completer(val) {
-			fmt.Fprintln(sm.completeOut, v)
+			fmt.Fprintln(sm.p.completeOut, v)
 		}
 		os.Exit(0)
 	}
@@ -118,6 +134,7 @@ func (sm *stateMachine) Run(args []string) (err error) {
 }
 
 func (sm *stateMachine) entryState(s string, t Token) (StateFunc, error) {
+	sm.expectCmd = true
 	switch t {
 	case VAL:
 		return sm.posArgState(s, t)
@@ -136,7 +153,7 @@ func (sm *stateMachine) entryState(s string, t Token) (StateFunc, error) {
 }
 
 func (sm *stateMachine) cmdState(s string, t Token) (StateFunc, error) {
-	if t != VAL {
+	if t != CMD {
 		return nil, fmt.Errorf("unexpected token: %d at cmdState", t)
 	}
 	cc, ok := sm.curCmd.subcmd[s]
@@ -168,7 +185,7 @@ func (sm *stateMachine) valueState(s string, t Token) (StateFunc, error) {
 	}
 	a := sm.curArg
 	if a.enum {
-		em := sm.enums[a.typ]
+		em := sm.p.enums[a.typ]
 		if err := a.SetValue(em[strings.ToLower(s)]); err != nil {
 			return nil, err
 		}
@@ -203,15 +220,15 @@ func (sm *stateMachine) flagState(s string, t Token) (StateFunc, error) {
 	if t != FLAG {
 		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
 	}
-	// if sm.isHelp(s) {
-	// 	// handle help
-	// }
-	// if sm.isVersion(s) {
-	// 	// handle version
-	// }
+	if sm.p.isHelp(s) {
+		// handle help
+	}
+	if sm.p.isVersion(s) {
+		// handle version
+	}
 	a := sm.curCmd.GetFlag(s)
 	if a == nil {
-		if sm.globalsEnabled {
+		if sm.p.globalsEnabled {
 			if a = sm.globals.Get(s); a == nil {
 				return nil, ErrNoSuchFlag{s}
 			}
@@ -223,6 +240,7 @@ func (sm *stateMachine) flagState(s string, t Token) (StateFunc, error) {
 	if a.IsBool() {
 		return sm.valueState("true", VAL)
 	}
+	sm.expectCmd = false
 	if a.isSlice {
 		return sm.sliceValueState, nil
 	}
@@ -238,7 +256,7 @@ func (sm *stateMachine) compositFlagState(s string, t Token) (StateFunc, error) 
 	val := s[i+1:]
 	a := sm.curCmd.GetFlag(flg)
 	if a == nil {
-		if sm.globalsEnabled {
+		if sm.p.globalsEnabled {
 			fmt.Println("glob", sm.globals.All())
 			if a = sm.globals.Get(s); a == nil {
 				return nil, ErrNoSuchFlag{s}
@@ -267,13 +285,13 @@ func (sm *stateMachine) tokenType(s string) Token {
 	if s == "--" {
 		return ALLPOS
 	}
-	if sm.curCmd.subcmd != nil {
+	if sm.curCmd.subcmd != nil && sm.expectCmd {
 		return CMD
 	}
 	return VAL
 }
 
-func parseCompletion2(args []string) ([]string, error) {
+func parseCompletion(args []string) ([]string, error) {
 	line := os.Getenv("COMP_LINE")
 	pointS := os.Getenv("COMP_POINT")
 	point, err := strconv.Atoi(pointS)

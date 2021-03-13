@@ -17,6 +17,8 @@ type SubCmdB struct {
 }
 
 type RootCmd struct {
+	SubA   *SubCmdA
+	SubB   *SubCmdB
 	Name   string
 	Number int
 	Flag   bool
