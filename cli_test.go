@@ -58,7 +58,7 @@ func TestParse(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	root := defaultParser.cmds["root"]
+	root := defaultCLI.cmds["root"]
 
 	for _, sa := range strargs {
 		if _, ok := root.flags.long[sa]; !ok {
@@ -95,7 +95,7 @@ func TestEnumRegistration(t *testing.T) {
 
 	RegisterEnum(enumMap)
 	NewRootCommand("root", args)
-	err := Eval([]string{"root", "--enum", "dio"})
+	err := Parse([]string{"root", "--enum", "dio"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestString(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Eval([]string{"root", "--string", "stringVal"})
+	err := Parse([]string{"root", "--string", "stringVal"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestInt(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Eval([]string{"root", "--int", "-23", "--int8", "-3", "--int16", "-24000", "--int32", "-70123", "--int64", "-10200300"})
+	err := Parse([]string{"root", "--int", "-23", "--int8", "-3", "--int16", "-24000", "--int32", "-70123", "--int64", "-10200300"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestUint(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Eval([]string{"root", "--uint", "23", "--uint8", "3", "--uint16", "24000", "--uint32", "70123", "--uint64", "10200300"})
+	err := Parse([]string{"root", "--uint", "23", "--uint8", "3", "--uint16", "24000", "--uint32", "70123", "--uint64", "10200300"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestSliceArg(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Eval([]string{"root", "--names", "maria", "andreas", "giannis"})
+	err := Parse([]string{"root", "--names", "maria", "andreas", "giannis"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestExecuteRoot(t *testing.T) {
 
 	NewRootCommand("root", a)
 
-	err := Eval([]string{"root"})
+	err := Parse([]string{"root"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestExecuteSubA(t *testing.T) {
 
 	NewRootCommand("root", a)
 
-	err := Eval([]string{"root", "suba", "--name", "tester"})
+	err := Parse([]string{"root", "suba", "--name", "tester"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestExecuteSubB(t *testing.T) {
 
 	NewRootCommand("root", a)
 
-	err := Eval([]string{"root", "subb", "--num", "42"})
+	err := Parse([]string{"root", "subb", "--num", "42"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestTextUnmarshaler(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Eval([]string{"root", "--pair", "theKey:theValue"})
+	err := Parse([]string{"root", "--pair", "theKey:theValue"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestEnvDefaultCase(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	root := defaultParser.cmds["root"]
+	root := defaultCLI.cmds["root"]
 
 	for _, a := range root.flags.long {
 		fmt.Println(a.long)
@@ -425,9 +425,9 @@ func TestGlobals(t *testing.T) {
 		Subcmd *subcmd
 		G      string `cli:"global"`
 	}{}
-	p := NewParser(WithGlobalArgsEnabled())
+	p := NewCLI(WithGlobalArgsEnabled())
 	p.NewRootCommand("root", args)
-	err := p.Eval([]string{"root", "subcmd", "--a", "a", "--b", "1", "--g", "global"})
+	err := p.Parse([]string{"root", "subcmd", "--a", "a", "--b", "1", "--g", "global"})
 	if err != nil {
 		t.Fatalf("eval: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestGlobalsConflict(t *testing.T) {
 		G      string `cli:"global"`
 		Subcmd *subcmd
 	}{}
-	p := NewParser(WithGlobalArgsEnabled())
+	p := NewCLI(WithGlobalArgsEnabled())
 	defer func() {
 		if i := recover(); i == nil {
 			t.Fatal("should have paniced globals conflict")

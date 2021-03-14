@@ -5,339 +5,312 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"reflect"
+	"strconv"
 	"strings"
 
-	"github.com/scylladb/go-set/strset"
+	"github.com/kballard/go-shellquote"
 )
 
-var defaultParser = NewParser()
-
-// Parser is the cli parser
-type Parser struct {
-	tags           StructTags
-	roots          []reflect.Value
-	cmds           map[string]*command
-	enums          map[reflect.Type]*enum
-	globalsEnabled bool
-	argCase        Case
-	envCase        Case
-	cmdCase        Case
-	argSplicer     Splicer
-	envSplicer     Splicer
-	helpLong       string
-	helpShort      string
-	versionLong    string
-	versionShort   string
-	strategy       OnErrorStrategy
-	helpOut        io.Writer
-	errorOut       io.Writer
-	completeOut    io.Writer
-
-	execList []interface{}
-	globals  *flagSet
-	curArg   *argument
-	curCmd   *command
-	curPos   int
-	allPos   bool
-	isComp   bool
-	isLast   bool
-}
-
-// NewParser create new parser
-func NewParser(opts ...ParserOption) *Parser {
-	p := &Parser{
-		cmds:        map[string]*command{},
-		enums:       map[reflect.Type]*enum{},
-		argCase:     CaseCamelLower,
-		envCase:     CaseSnakeUpper,
-		cmdCase:     CaseLower,
-		argSplicer:  SplicerDot,
-		envSplicer:  SplicerUnderscore,
-		helpLong:    "--help",
-		helpShort:   "-h",
-		versionLong: "--version",
+func newParser(cli *CLI) *parser {
+	p := &parser{
+		cli:       cli,
+		expectCmd: true,
 	}
-	for _, o := range opts {
-		o(p)
-	}
-	if p.tags.Cli == "" {
-		p.tags.Cli = "cli"
-	}
-	if p.tags.Help == "" {
-		p.tags.Help = "help"
-	}
-	if p.tags.Default == "" {
-		p.tags.Default = "default"
-	}
-	if p.tags.Complete == "" {
-		p.tags.Complete = "complete"
-	}
-	if p.globalsEnabled {
+	if cli.options.globalsEnabled {
 		p.globals = newFlagSet()
 	}
-	p.completeOut = os.Stdout
 	return p
 }
 
-// NewRootCommand add new root command to defaultParser
-func NewRootCommand(name string, arg interface{}) {
-	defaultParser.NewRootCommand(name, arg)
+type parser struct {
+	cli         *CLI
+	globals     *flagSet
+	curArg      *argument
+	curCmd      *command
+	curPos      int
+	allPos      bool
+	execList    []interface{}
+	isComp      bool
+	completeOut io.Writer
+	isLast      bool
+	expectCmd   bool
 }
 
-// NewRootCommand add new root command to this parser
-func (p *Parser) NewRootCommand(name string, arg interface{}) {
-	t := reflect.TypeOf(arg)
-	if t.Kind() != reflect.Ptr && t.Elem().Kind() != reflect.Struct {
-		panic("not ptr to struct")
-	}
-	path := p.addRoot(arg)
-	c := &command{
-		path:   path,
-		name:   name,
-		subcmd: map[string]*command{},
-		flags:  newFlagSet(),
-	}
-	p.cmds[name] = c
-	p.walkStruct(c, t, path, "", "", false, strset.New())
-}
+type Token int
 
-// Eval marshal string args to struct using the defaultParser
-func Eval(args []string) error {
-	return defaultParser.Eval(args)
-}
+const (
+	VAL Token = iota
+	CMD
+	FLAG
+	COMPFLAG
+	ALLPOS
+)
 
-func isCompletion() bool {
-	_, lok := os.LookupEnv("COMP_LINE")
-	_, pok := os.LookupEnv("COMP_POINT")
-	return lok && pok
-}
+type StateFunc func(s string, t Token) (StateFunc, error)
 
-// Eval marshal string args to struct
-func (p *Parser) Eval(args []string) (err error) {
+func (p *parser) Run(args []string) (err error) {
 
-	sm := newStateMachine(p)
-
-	if err := sm.Run(args); err != nil {
-		return err
-	}
-
-	// check required
-	for _, a := range sm.curCmd.AllFlags() {
-		if a.required && !a.isSet {
-			return fmt.Errorf("required flag not set: %s", a.long)
+	isComp := isCompletion()
+	if isComp {
+		p.isComp = true
+		args, err = parseCompletion(args)
+		if err != nil {
+			os.Exit(0)
 		}
 	}
 
-	p.execList = sm.execList
+	c, err := p.cli.findRootCommand(args[0])
+	if err != nil {
+		if isComp {
+			os.Exit(0)
+		}
+		return err
+	}
+	p.setCurrentCmd(c)
 
+	args = args[1:]
+	state := p.entryState
+	var t, lt Token
+
+	for i, a := range args {
+		lt = t
+		t = p.tokenType(a)
+		if p.allPos {
+			t = VAL
+		}
+		if p.isComp && i == len(args)-1 {
+			break
+		}
+		state, err = state(a, t)
+		if err != nil {
+			if isComp {
+				os.Exit(0)
+			}
+			return err
+		}
+	}
+	if p.isComp {
+		if p.allPos {
+			os.Exit(0)
+		}
+		var completer Completer = NewFuncCmpleter(p.curCmd.CompleteSubcommands)
+		val := args[len(args)-1]
+		switch t {
+		case COMPFLAG:
+			fg, vl := splitCompositeFlag(val)
+			flg := p.curCmd.GetFlag(fg)
+			if flg != nil {
+				completer = flg
+				val = vl
+			}
+		case VAL:
+			if lt == FLAG && !p.curArg.IsBool() {
+				completer = p.curArg
+			}
+		case FLAG, ALLPOS:
+			completer = NewFuncCmpleter(p.curCmd.CompleteFlags)
+		}
+		if completer != nil {
+			for _, v := range completer.Complete(val) {
+				fmt.Fprintln(p.cli.completeOut, v)
+			}
+		}
+		os.Exit(0)
+	}
 	return nil
 }
 
-// RegisterEnum resgister an enum map to the default parser
-func RegisterEnum(enumMap interface{}) {
-	defaultParser.RegisterEnum(enumMap)
+func (p *parser) ExecList() []interface{} {
+	return p.execList
 }
 
-// RegisterEnum resgister an enum map. map must have string key and int/uint
-// value. The value must also be a custom type e.g. type MyEnum uint32
-func (p *Parser) RegisterEnum(enumMap interface{}) {
-	enm := newEnum(enumMap)
-	p.enums[enm.typ] = enm
-}
-
-func (p *Parser) addRoot(in interface{}) *path {
-	p.roots = append(p.roots, reflect.ValueOf(in))
-	return &path{
-		root: &p.roots[len(p.roots)-1],
-	}
-}
-
-func (p *Parser) isHelp(arg string) bool {
-	return arg == p.helpLong || arg == p.helpShort
-}
-
-func (p *Parser) isVersion(arg string) bool {
-	return arg == p.versionLong || arg == p.versionShort
-}
-
-var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
-
-func (p *Parser) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx string, isArg bool, globals *strset.Set) {
-	if isPtr(t) {
-		t = t.Elem()
-	}
-	for i := 0; i < t.NumField(); i++ {
-
-		// get field
-		fld := t.Field(i)
-		fldName := fld.Name
-		fldType := fld.Type
-
-		// get and parse cli tag
-		var tag *clitag
-		tg := fld.Tag.Get(p.tags.Cli)
-		if tg == "-" {
-			continue
-		}
-		tag = parseCliTag(tg)
-
-		// compute arg name
-		name := p.argCase.Parse(fldName)
-		if tag.long != "" {
-			name = tag.long
-		}
-		if pfx != "" {
-			name = p.argSplicer.Splice(pfx, name)
-		}
-
-		// compute env var name
-		env := p.envCase.Parse(fldName)
-		if tag.long != "" {
-			env = tag.env
-		}
-		if envpfx != "" {
-			env = p.envSplicer.Splice(envpfx, env)
-		}
-
-		// create subpath for the current field
-		spth := pth.Subpath(fldName)
-
-		if isStruct(fldType) && !fldType.Implements(textUnmarshaler) {
-			// embedded struct parse as args of parent
-			if fld.Anonymous {
-				p.walkStruct(c, fldType, spth, pfx, envpfx, isArg, globals)
-				continue
-			}
-			// we know is an arg so use the name as prefix
-			if isArg {
-				p.walkStruct(c, fldType, spth, name, env, isArg, globals)
-				continue
-			}
-			// is a ptr to struct but isArg in tag is set or
-			// is normal struct so this is an arg
-			if tag.isArg || !isPtr(fldType) {
-				p.walkStruct(c, fldType, spth, name, env, true, globals)
-				continue
-			}
-			// parse struct as a command
-			cname := p.cmdCase.Parse(fldName)
-			if tag.cmd != "" {
-				cname = tag.cmd
-			}
-			sc := c.AddSubcommand(cname, spth)
-			p.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
-			continue
-		}
-
-		// generate long and short flags
-		long := "--" + name
-		short := ""
-		if tag.short != "" {
-			if len(tag.short) != 1 {
-				panic("wrong short tag: " + tag.short)
-			}
-			short = "-" + tag.short
-		}
-
-		// check for global args propagation collision
-		if p.globalsEnabled {
-			if globals.Has(long) {
-				panic("global args propagation collision: " + long)
-			}
-			if tag.global {
-				globals.Add(long)
-			}
-			if short != "" {
-				if globals.Has(short) {
-					panic("global args propagation collision: " + short)
-				}
-				if tag.global {
-					globals.Add(short)
-				}
-			}
-		}
-
-		// create arg and add to command
-		a := &argument{
-			path:       spth,
-			typ:        fldType,
-			long:       long,
-			short:      short,
-			env:        env,
-			required:   tag.required,
-			positional: tag.positional,
-			global:     tag.global,
-			def:        fld.Tag.Get(p.tags.Default),
-			help:       fld.Tag.Get(p.tags.Help),
-		}
-		c.AddArg(a)
-
-		// get the underlaying type if pointer
-		if isPtr(fldType) {
-			fldType = fldType.Elem()
-		}
-
-		if isArray(fldType) {
-			switch fldType.Kind() {
-			case reflect.Array:
-				panic("array type not supported")
-			case reflect.Slice:
-				a.isSlice = true
-			}
-		}
-
-		// check for enums
-		if isInt(fldType) || isUint(fldType) {
-			if enm, ok := p.enums[fldType]; ok {
-				a.enum = enm
-			}
-		}
-
-		// completers
-		if val, ok := fld.Tag.Lookup(p.tags.Complete); ok {
-			for _, v := range strings.Split(val, ",") {
-				cmp := getNamedCompleter((v))
-				if cmp == nil {
-					panic("no such completer: " + v)
-				}
-				a.completers = append(a.completers, cmp)
+func (p *parser) setCurrentCmd(c *command) {
+	p.curCmd = c
+	if p.cli.options.globalsEnabled {
+		for _, a := range p.curCmd.AllFlags() {
+			if a.global {
+				p.globals.Add(a)
 			}
 		}
 	}
+	// add subcommand to execution list
+	p.execList = append(p.execList, p.curCmd.path.Get())
 }
 
-func (p *Parser) findRootCommand(name string) (*command, error) {
-	c, ok := p.cmds[name]
+func (p *parser) entryState(s string, t Token) (StateFunc, error) {
+	p.expectCmd = true
+	switch t {
+	case VAL:
+		return p.posArgState(s, t)
+	case CMD:
+		return p.cmdState(s, t)
+	case FLAG:
+		return p.flagState(s, t)
+	case COMPFLAG:
+		return p.compositFlagState(s, t)
+	case ALLPOS:
+		p.allPos = true
+		return p.entryState, nil
+	default:
+		return nil, fmt.Errorf("unknown token: %d", t)
+	}
+}
+
+func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
+	if t != CMD {
+		return nil, fmt.Errorf("unexpected token: %d at cmdState", t)
+	}
+	cc, ok := p.curCmd.subcmd[s]
 	if !ok {
-		// try base path
-		c, ok = p.cmds[filepath.Base(name)]
-		if !ok {
-			return nil, ErrCommandNotFound{name}
+		return nil, ErrCommandNotFound{s}
+	}
+	p.setCurrentCmd(cc)
+	return p.entryState, nil
+}
+
+func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
+	if t != VAL {
+		return nil, fmt.Errorf("unexpected token: %d at posArgState", t)
+	}
+	if p.curPos == len(p.curCmd.positionals) {
+		return nil, fmt.Errorf("too many positional arguments")
+	}
+	a := p.curCmd.positionals[p.curPos]
+	p.curPos++
+	if a.isSlice {
+		return p.sliceValueState(s, t)
+	}
+	return p.valueState(s, t)
+}
+
+func (p *parser) valueState(s string, t Token) (StateFunc, error) {
+	if t != VAL {
+		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
+	}
+	a := p.curArg
+	if a.enum != nil {
+		if err := a.SetValue(a.enum.Value(s)); err != nil {
+			return nil, err
+		}
+		return p.entryState, nil
+	}
+	if tum, ok := a.path.Get().(encoding.TextUnmarshaler); ok {
+		if err := tum.UnmarshalText([]byte(s)); err != nil {
+			return nil, err
+		}
+		return p.entryState, nil
+	}
+	if err := p.curArg.SetScalarValue(s); err != nil {
+		return nil, err
+	}
+	return p.entryState, nil
+}
+func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
+	if t != VAL {
+		return nil, fmt.Errorf("unexpected token: %d at sliceValueState", t)
+	}
+	a := p.curArg
+	if err := a.Append(s); err != nil {
+		return nil, err
+	}
+	if a.separate {
+		return p.entryState, nil
+	}
+	return p.sliceValueState, nil
+}
+
+func (p *parser) flagState(s string, t Token) (StateFunc, error) {
+	if t != FLAG {
+		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
+	}
+	if p.cli.isHelp(s) {
+		// handle help
+	}
+	if p.cli.isVersion(s) {
+		// handle version
+	}
+	a := p.curCmd.GetFlag(s)
+	if a == nil {
+		if p.cli.options.globalsEnabled {
+			if a = p.globals.Get(s); a == nil {
+				return nil, ErrNoSuchFlag{s}
+			}
+		} else {
+			return nil, ErrNoSuchFlag{s}
 		}
 	}
-	return c, nil
+	p.curArg = a
+	if a.IsBool() {
+		return p.valueState("true", VAL)
+	}
+	p.expectCmd = false
+	if a.isSlice {
+		return p.sliceValueState, nil
+	}
+	return p.valueState, nil
 }
 
-func isFlag(s string) bool {
-	if len(s) == 2 && s[0] == '-' && !strings.ContainsAny(s, "1234567890-") {
-		return true
+func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
+	if t != COMPFLAG {
+		return nil, fmt.Errorf("unexpected token: %d at compositFlagState", t)
 	}
-	if len(s) > 2 && s[0] == '-' && s[1] == '-' {
-		return true
-	}
-	return false
-}
-
-func splitCompositeFlag(s string) (string, string) {
 	i := strings.Index(s, "=")
-	if i == -1 {
-		return s, ""
-	}
 	flg := s[:i]
-	if i == len(s)-1 {
-		return flg, ""
+	val := s[i+1:]
+	a := p.curCmd.GetFlag(flg)
+	if a == nil {
+		if p.cli.options.globalsEnabled {
+			fmt.Println("glob", p.globals.All())
+			if a = p.globals.Get(s); a == nil {
+				return nil, ErrNoSuchFlag{s}
+			}
+		} else {
+			return nil, ErrNoSuchFlag{s}
+		}
 	}
-	return flg, s[i+1:]
+	p.curArg = a
+	if a.isSlice {
+		if !a.separate {
+			return nil, fmt.Errorf("slice flag must be separated to use composite flag")
+		}
+		return p.sliceValueState(s, VAL)
+	}
+	return p.valueState(val, VAL)
+}
+
+func (p *parser) tokenType(s string) Token {
+	if isFlag(s) {
+		if i := strings.Index(s, "="); i != -1 {
+			return COMPFLAG
+		}
+		return FLAG
+	}
+	if s == "--" {
+		return ALLPOS
+	}
+	if p.curCmd.subcmd != nil && p.expectCmd {
+		return CMD
+	}
+	return VAL
+}
+
+func parseCompletion(args []string) ([]string, error) {
+	line := os.Getenv("COMP_LINE")
+	pointS := os.Getenv("COMP_POINT")
+	point, err := strconv.Atoi(pointS)
+	if err != nil {
+		return nil, err
+	}
+	if len(line) > point {
+		line = line[:point]
+	}
+	wrds, err := shellquote.Split(line)
+	if err != nil {
+		return nil, err
+	}
+	isLastSpace := line[len(line)-1] == ' '
+	if isLastSpace {
+		wrds = append(wrds, "")
+	}
+	return wrds, nil
 }

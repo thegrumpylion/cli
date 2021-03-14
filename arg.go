@@ -61,22 +61,24 @@ func (fs *flagSet) Autocomplete(val string) []string {
 }
 
 type argument struct {
-	path       *path
-	typ        reflect.Type
-	def        string
-	long       string
-	short      string
-	env        string
-	help       string
-	global     bool
-	positional bool
-	required   bool
-	separate   bool
-	enum       *enum
-	iface      bool
-	isSlice    bool
-	isSet      bool
-	completers []Completer
+	path        *path
+	typ         reflect.Type
+	def         string
+	long        string
+	short       string
+	env         string
+	help        string
+	placeholder string
+	separator   byte
+	global      bool
+	positional  bool
+	required    bool
+	separate    bool
+	enum        *enum
+	iface       bool
+	isSlice     bool
+	isSet       bool
+	completers  []Completer
 }
 
 func (a *argument) IsBool() bool {
@@ -107,4 +109,30 @@ func (a *argument) Complete(val string) (out []string) {
 	}
 	sort.Strings(out)
 	return
+}
+
+func (a *argument) Usage() string {
+	if a.positional {
+		if a.required {
+			return a.placeholder
+		}
+		return fmt.Sprintf("[%s]", a.placeholder)
+	}
+	b := strings.Builder{}
+	if !a.required {
+		b.WriteByte('[')
+	}
+	if a.short != "" {
+		b.WriteString(a.short)
+		b.WriteByte('|')
+	}
+	b.WriteString(a.long)
+	if !a.IsBool() {
+		b.WriteByte(a.separator)
+		b.WriteString(a.placeholder)
+	}
+	if !a.required {
+		b.WriteByte(']')
+	}
+	return b.String()
 }

@@ -1,7 +1,6 @@
 package cnc
 
 import (
-	"sort"
 	"strings"
 )
 
@@ -9,6 +8,7 @@ type command struct {
 	path        *path
 	parent      *command
 	name        string
+	group       string
 	hidden      bool
 	flags       *flagSet
 	positionals []*argument
@@ -52,20 +52,24 @@ func (c *command) LookupSubcommand(name string) (sc *command, ok bool) {
 	return
 }
 
-func (c *command) Complete(val string) (out []string) {
+func (c *command) CompleteFlags(val string) (out []string) {
+	for _, v := range c.AllFlags() {
+		if strings.HasPrefix(v.long, val) {
+			out = append(out, v.long)
+		}
+	}
+	return
+}
+
+func (c *command) CompleteSubcommands(val string) (out []string) {
 	for sc := range c.subcmd {
 		if strings.HasPrefix(sc, val) {
 			out = append(out, sc)
 		}
 	}
-	for _, v := range c.AllFlags() {
-		if strings.HasPrefix(v.long, val) {
-			out = append(out, v.long)
-		}
-		if v.short != "" && strings.HasPrefix(v.short, val) {
-			out = append(out, v.short)
-		}
-	}
-	sort.Strings(out)
 	return
 }
+
+var parentCmdTpl = `Usage:
+  {{.Name}}{{}}
+`

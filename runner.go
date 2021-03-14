@@ -67,17 +67,17 @@ func isRunner(t reflect.Type) bool {
 
 // Execute the chain of commands in default parser
 func Execute(ctx context.Context) error {
-	return defaultParser.Execute(ctx)
+	return defaultCLI.Execute(ctx)
 }
 
 // Execute the chain of commands
-func (p *Parser) Execute(ctx context.Context) error {
+func (cli *CLI) Execute(ctx context.Context) error {
 
 	var err error
-	lastCmd := len(p.execList) - 1
+	lastCmd := len(cli.execList) - 1
 	pPostRunners := []PersistentPostRunner{}
 
-	for i, inf := range p.execList {
+	for i, inf := range cli.execList {
 		// PersistentPostRun pushed on a stack to run in a reverse order
 		if rnr, ok := inf.(PersistentPostRunner); ok {
 			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)
@@ -86,7 +86,7 @@ func (p *Parser) Execute(ctx context.Context) error {
 		if rnr, ok := inf.(PersistentPreRunner); ok {
 			err = rnr.PersistentPreRun(ctx)
 			if err != nil {
-				if !(p.strategy == OnErrorContinue) {
+				if !(cli.options.strategy == OnErrorContinue) {
 					break
 				}
 				ctx = context.WithValue(ctx, lastErrorKey{}, err)
@@ -97,7 +97,7 @@ func (p *Parser) Execute(ctx context.Context) error {
 			if rnr, ok := inf.(PreRunner); ok {
 				err = rnr.PreRun(ctx)
 				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
+					if !(cli.options.strategy == OnErrorContinue) {
 						break
 					}
 					ctx = context.WithValue(ctx, lastErrorKey{}, err)
@@ -107,7 +107,7 @@ func (p *Parser) Execute(ctx context.Context) error {
 			if rnr, ok := inf.(Runner); ok {
 				err = rnr.Run(ctx)
 				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
+					if !(cli.options.strategy == OnErrorContinue) {
 						break
 					}
 					ctx = context.WithValue(ctx, lastErrorKey{}, err)
@@ -117,7 +117,7 @@ func (p *Parser) Execute(ctx context.Context) error {
 			if rnr, ok := inf.(PostRunner); ok {
 				err = rnr.PostRun(ctx)
 				if err != nil {
-					if !(p.strategy == OnErrorContinue) {
+					if !(cli.options.strategy == OnErrorContinue) {
 						break
 					}
 					ctx = context.WithValue(ctx, lastErrorKey{}, err)
@@ -126,14 +126,14 @@ func (p *Parser) Execute(ctx context.Context) error {
 		}
 	}
 	// check for error and strategy
-	if err != nil && p.strategy == OnErrorBreak {
+	if err != nil && cli.options.strategy == OnErrorBreak {
 		return err
 	}
 	// PersistentPostRun
 	for _, rnr := range pPostRunners {
 		err = rnr.PersistentPostRun(ctx)
 		if err != nil {
-			if p.strategy == OnErrorPostRunners {
+			if cli.options.strategy == OnErrorPostRunners {
 				return err
 			}
 			ctx = context.WithValue(ctx, lastErrorKey{}, err)

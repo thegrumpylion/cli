@@ -1,76 +1,91 @@
 package cnc
 
-// ParserOption option type for Parser
-type ParserOption func(p *Parser)
+type cliOptions struct {
+	tags           StructTags
+	globalsEnabled bool
+	argCase        Case
+	envCase        Case
+	cmdCase        Case
+	argSplicer     Splicer
+	envSplicer     Splicer
+	helpLong       string
+	helpShort      string
+	versionLong    string
+	versionShort   string
+	strategy       OnErrorStrategy
+}
+
+// Option option type for Parser
+type Option func(o *cliOptions)
 
 // WithArgCase set the arg case. default is CaseCamelLower
-func WithArgCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.argCase = c
+func WithArgCase(c Case) Option {
+	return func(o *cliOptions) {
+		o.argCase = c
 	}
 }
 
 // WithEnvCase set the env case. default is CaseSnakeUpper
-func WithEnvCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.envCase = c
+func WithEnvCase(c Case) Option {
+	return func(o *cliOptions) {
+		o.envCase = c
 	}
 }
 
 // WithCmdCase set the cmd case. default is CaseLower
-func WithCmdCase(c Case) ParserOption {
-	return func(p *Parser) {
-		p.cmdCase = c
+func WithCmdCase(c Case) Option {
+	return func(o *cliOptions) {
+		o.cmdCase = c
 	}
 }
 
 // WithArgSplicer set the arg splicer
-func WithArgSplicer(s Splicer) ParserOption {
-	return func(p *Parser) {
-		p.argSplicer = s
+func WithArgSplicer(s Splicer) Option {
+	return func(o *cliOptions) {
+		o.argSplicer = s
 	}
 }
 
 // WithEnvSplicer set the env splicer
-func WithEnvSplicer(s Splicer) ParserOption {
-	return func(p *Parser) {
-		p.envSplicer = s
+func WithEnvSplicer(s Splicer) Option {
+	return func(o *cliOptions) {
+		o.envSplicer = s
 	}
 }
 
 // WithOnErrorStrategy sets the execution strategy for handling errors
-func WithOnErrorStrategy(str OnErrorStrategy) ParserOption {
-	return func(p *Parser) {
-		p.strategy = str
+func WithOnErrorStrategy(str OnErrorStrategy) Option {
+	return func(o *cliOptions) {
+		o.strategy = str
 	}
 }
 
 // WithGlobalArgsEnabled enable global argumets
-func WithGlobalArgsEnabled() ParserOption {
-	return func(p *Parser) {
-		p.globalsEnabled = true
+func WithGlobalArgsEnabled() Option {
+	return func(o *cliOptions) {
+		o.globalsEnabled = true
 	}
 }
 
 // WithStructTags sets the struct tags to be used by this parser
-func WithStructTags(tags StructTags) ParserOption {
-	return func(p *Parser) {
-		p.tags = tags
+func WithStructTags(tags StructTags) Option {
+	return func(o *cliOptions) {
+		o.tags = tags
 	}
 }
 
 // WithHelpFlags sets the help flags. Default --help,-h
-func WithHelpFlags(long, short string) ParserOption {
-	return func(p *Parser) {
-		p.helpLong = long
-		p.helpShort = short
+func WithHelpFlags(long, short string) Option {
+	return func(o *cliOptions) {
+		o.helpLong = long
+		o.helpShort = short
 	}
 }
 
 // WithVersionFlags sets the version flags. Default --version
-func WithVersionFlags(long, short string) ParserOption {
-	return func(p *Parser) {
-		p.versionLong = long
-		p.versionShort = short
+func WithVersionFlags(long, short string) Option {
+	return func(o *cliOptions) {
+		o.versionLong = long
+		o.versionShort = short
 	}
 }
