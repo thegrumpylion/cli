@@ -61,7 +61,7 @@ func (e *enum) Value(s string) interface{} {
 func (e *enum) Complete(val string) (out []string) {
 	for v := range e.values {
 		if strings.HasPrefix(v, strings.ToUpper(val)) {
-			out = append(out, v)
+			out = append(out, v+" ")
 		}
 	}
 	return

@@ -15,6 +15,7 @@ type command struct {
 	flags       *flagSet
 	positionals []*argument
 	subcmd      map[string]*command
+	opts        *cliOptions
 }
 
 func (c *command) AddArg(a *argument) {
@@ -44,6 +45,7 @@ func (c *command) AddSubcommand(name string, p *path) *command {
 		Name:   name,
 		subcmd: map[string]*command{},
 		flags:  newFlagSet(),
+		opts:   c.opts,
 	}
 	c.subcmd[name] = sc
 	return sc
@@ -57,7 +59,11 @@ func (c *command) LookupSubcommand(name string) (sc *command, ok bool) {
 func (c *command) CompleteFlags(val string) (out []string) {
 	for _, v := range c.AllFlags() {
 		if strings.HasPrefix(v.long, val) {
-			out = append(out, v.long)
+			o := v.long + string(c.opts.separator)
+			if v.IsBool() {
+				o = v.long + " "
+			}
+			out = append(out, o)
 		}
 	}
 	return
@@ -66,7 +72,7 @@ func (c *command) CompleteFlags(val string) (out []string) {
 func (c *command) CompleteSubcommands(val string) (out []string) {
 	for sc := range c.subcmd {
 		if strings.HasPrefix(sc, val) {
-			out = append(out, sc)
+			out = append(out, sc+" ")
 		}
 	}
 	return

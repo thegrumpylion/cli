@@ -50,7 +50,9 @@ var filesCompleter = func(val string) []string {
 		if strings.HasPrefix(name, f) {
 			name = filepath.Join(d, name)
 			if fl.IsDir() {
-				name = name + "/"
+				name += "/"
+			} else {
+				name += " "
 			}
 			out = append(out, name)
 		}
@@ -71,7 +73,7 @@ var hostsCompleter = func(val string) []string {
 		}
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) > 1 && len(parts[1]) > 0 && strings.HasPrefix(parts[1], val) {
-			out = append(out, parts[1])
+			out = append(out, parts[1]+" ")
 		}
 	}
 	return out

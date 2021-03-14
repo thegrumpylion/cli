@@ -84,6 +84,7 @@ func (cli *CLI) NewRootCommand(name string, arg interface{}) {
 		Name:   name,
 		subcmd: map[string]*command{},
 		flags:  newFlagSet(),
+		opts:   cli.options,
 	}
 	cli.cmds[name] = c
 	cli.walkStruct(c, t, path, "", "", false, strset.New())

@@ -66,6 +66,7 @@ func (c *RootCmd) Run(ctx context.Context) error {
 }
 
 func main() {
+	cnc := cnc.NewCLI(cnc.WithSeparator(cnc.SeparatorEquals))
 	cnc.RegisterEnum(enumMap)
 
 	c := &RootCmd{}
