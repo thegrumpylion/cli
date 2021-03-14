@@ -310,7 +310,7 @@ func (cli *CLI) findRootCommand(name string) (*command, error) {
 }
 
 func isFlag(s string) bool {
-	if len(s) == 2 && s[0] == '-' && !strings.ContainsAny(s, "1234567890-") {
+	if len(s) == 2 && s[0] == '-' && !strings.ContainsAny(string(s[1]), "1234567890-") {
 		return true
 	}
 	if len(s) > 2 && s[0] == '-' && s[1] == '-' {

@@ -458,3 +458,12 @@ func TestGlobalsConflict(t *testing.T) {
 	}()
 	p.NewRootCommand("root", args)
 }
+
+func TestIsFlag(t *testing.T) {
+	if !isFlag("--help") {
+		t.Fatal("--help is flag")
+	}
+	if !isFlag("-h") {
+		t.Fatal("-h is flag")
+	}
+}
