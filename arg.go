@@ -69,16 +69,15 @@ type argument struct {
 	env         string
 	help        string
 	placeholder string
-	separator   byte
 	global      bool
 	positional  bool
 	required    bool
-	separate    bool
 	enum        *enum
 	iface       bool
 	isSlice     bool
 	isSet       bool
 	completers  []Completer
+	opts        *cliOptions
 }
 
 func (a *argument) IsBool() bool {
@@ -128,7 +127,7 @@ func (a *argument) Usage() string {
 	}
 	b.WriteString(a.long)
 	if !a.IsBool() {
-		b.WriteByte(a.separator)
+		b.WriteByte(byte(a.opts.separator))
 		b.WriteString(a.placeholder)
 	}
 	if !a.required {

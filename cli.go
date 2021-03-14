@@ -58,8 +58,12 @@ func NewCLI(options ...Option) *CLI {
 	if opts.tags.Complete == "" {
 		opts.tags.Complete = "complete"
 	}
+	if !(opts.separator == SeparatorEquals || opts.separator == SeparatorSpace) {
+		opts.separator = SeparatorSpace
+	}
 	cli.options = opts
 	cli.completeOut = os.Stdout
+	cli.helpOut = os.Stdout
 	return cli
 }
 
@@ -77,7 +81,7 @@ func (cli *CLI) NewRootCommand(name string, arg interface{}) {
 	path := cli.addRoot(arg)
 	c := &command{
 		path:   path,
-		name:   name,
+		Name:   name,
 		subcmd: map[string]*command{},
 		flags:  newFlagSet(),
 	}
@@ -243,16 +247,18 @@ func (cli *CLI) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx st
 
 		// create arg and add to command
 		a := &argument{
-			path:       spth,
-			typ:        fldType,
-			long:       long,
-			short:      short,
-			env:        env,
-			required:   tag.required,
-			positional: tag.positional,
-			global:     tag.global,
-			def:        fld.Tag.Get(cli.options.tags.Default),
-			help:       fld.Tag.Get(cli.options.tags.Help),
+			opts:        cli.options,
+			path:        spth,
+			typ:         fldType,
+			long:        long,
+			short:       short,
+			env:         env,
+			required:    tag.required,
+			positional:  tag.positional,
+			global:      tag.global,
+			def:         fld.Tag.Get(cli.options.tags.Default),
+			help:        fld.Tag.Get(cli.options.tags.Help),
+			placeholder: strings.ToUpper(name),
 		}
 		c.AddArg(a)
 

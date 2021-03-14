@@ -1,5 +1,12 @@
 package cnc
 
+type Separator byte
+
+const (
+	SeparatorSpace  Separator = ' '
+	SeparatorEquals Separator = '='
+)
+
 type cliOptions struct {
 	tags           StructTags
 	globalsEnabled bool
@@ -13,6 +20,7 @@ type cliOptions struct {
 	versionLong    string
 	versionShort   string
 	strategy       OnErrorStrategy
+	separator      Separator
 }
 
 // Option option type for Parser
@@ -87,5 +95,12 @@ func WithVersionFlags(long, short string) Option {
 	return func(o *cliOptions) {
 		o.versionLong = long
 		o.versionShort = short
+	}
+}
+
+// WithSeparator sets the flag separator charachter for help and completion
+func WithSeparator(sep Separator) Option {
+	return func(o *cliOptions) {
+		o.separator = sep
 	}
 }

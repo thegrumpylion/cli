@@ -1,13 +1,15 @@
 package cnc
 
 import (
+	"html/template"
+	"io"
 	"strings"
 )
 
 type command struct {
+	Name        string
 	path        *path
 	parent      *command
-	name        string
 	group       string
 	hidden      bool
 	flags       *flagSet
@@ -39,7 +41,7 @@ func (c *command) AddSubcommand(name string, p *path) *command {
 	sc := &command{
 		path:   p,
 		parent: c,
-		name:   name,
+		Name:   name,
 		subcmd: map[string]*command{},
 		flags:  newFlagSet(),
 	}
@@ -70,6 +72,27 @@ func (c *command) CompleteSubcommands(val string) (out []string) {
 	return
 }
 
+func (c *command) Usage(w io.Writer) {
+	var t *template.Template
+	if c.subcmd != nil {
+		t = template.Must(template.New("").Parse(parentCmdTpl))
+	} else {
+		t = template.Must(template.New("").Parse(leafCmdTpl))
+	}
+	if err := t.Execute(w, c); err != nil {
+		panic(err)
+	}
+}
+
 var parentCmdTpl = `Usage:
-  {{.Name}}{{}}
+  {{.Name}}{{range .AllFlags}} {{.Usage}}{{end}}
+
+Commands:
+
+`
+var leafCmdTpl = `
+Usage:
+  {{.Name}}{{range .AllFlags}} {{.Usage}}{{end}}
+
+Arguments:
 `

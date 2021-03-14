@@ -204,7 +204,7 @@ func TestSliceArg(t *testing.T) {
 
 	NewRootCommand("root", args)
 
-	err := Parse([]string{"root", "--names", "maria", "andreas", "giannis"})
+	err := Parse([]string{"root", "--names", "maria", "--names", "andreas", "--names", "giannis"})
 	if err != nil {
 		t.Fatal(err)
 	}

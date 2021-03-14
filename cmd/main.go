@@ -72,7 +72,7 @@ func main() {
 
 	cnc.NewRootCommand(filepath.Base(os.Args[0]), c)
 
-	if err := cnc.Eval(os.Args); err != nil {
+	if err := cnc.Parse(os.Args); err != nil {
 		panic(err)
 	}
 

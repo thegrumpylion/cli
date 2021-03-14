@@ -213,10 +213,7 @@ func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
 	if err := a.Append(s); err != nil {
 		return nil, err
 	}
-	if a.separate {
-		return p.entryState, nil
-	}
-	return p.sliceValueState, nil
+	return p.entryState, nil
 }
 
 func (p *parser) flagState(s string, t Token) (StateFunc, error) {
@@ -224,7 +221,8 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
 	}
 	if p.cli.isHelp(s) {
-		// handle help
+		p.curCmd.Usage(p.cli.helpOut)
+		os.Exit(0)
 	}
 	if p.cli.isVersion(s) {
 		// handle version
@@ -270,9 +268,6 @@ func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
 	}
 	p.curArg = a
 	if a.isSlice {
-		if !a.separate {
-			return nil, fmt.Errorf("slice flag must be separated to use composite flag")
-		}
 		return p.sliceValueState(s, VAL)
 	}
 	return p.valueState(val, VAL)

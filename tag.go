@@ -21,11 +21,6 @@ type clitag struct {
 	isArg      bool
 	cmd        string
 	global     bool
-	csv        bool
-	embed      bool
-	enum       string
-	iface      string
-	flag       string
 }
 
 func parseCliTag(s string) *clitag {
@@ -55,10 +50,6 @@ func parseCliTag(s string) *clitag {
 			tag.positional = true
 		case "global":
 			tag.global = true
-		case "embed":
-			tag.embed = true
-		case "iface":
-			tag.iface = val
 		case "arg":
 			tag.isArg = true
 		case "cmd":

@@ -49,7 +49,7 @@ func newEnum(enumMap interface{}) *enum {
 
 func (e *enum) Name(v interface{}) string {
 	if reflect.TypeOf(v) != e.typ {
-		panic(fmt.Sprintf("invalid enum value %s not %s", reflect.TypeOf(v).Name(), e.typ.Name()))
+		panic(fmt.Sprintf("invalid enum value type: %s not %s", reflect.TypeOf(v).Name(), e.typ.Name()))
 	}
 	return e.names[v]
 }
