@@ -73,7 +73,6 @@ type argument struct {
 	positional  bool
 	required    bool
 	enum        *enum
-	iface       bool
 	isSlice     bool
 	isSet       bool
 	completers  []Completer
@@ -84,18 +83,29 @@ func (a *argument) IsBool() bool {
 	return a.typ.Kind() == reflect.Bool
 }
 
+func (a *argument) IsSet() bool {
+	return a.isSet
+}
+
+func (a *argument) Reset() {
+	a.isSet = false
+}
+
 func (a *argument) SetScalarValue(val string) error {
+	a.isSet = true
 	return a.path.SetScalar(val)
 }
 
 func (a *argument) Append(s string) error {
 	if a.isSlice {
+		a.isSet = true
 		return a.path.AppendToSlice(s)
 	}
 	return fmt.Errorf("not an array or a slice")
 }
 
 func (a *argument) SetValue(val interface{}) error {
+	a.isSet = true
 	return a.path.Set(val)
 }
 

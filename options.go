@@ -21,6 +21,8 @@ type cliOptions struct {
 	versionShort   string
 	strategy       OnErrorStrategy
 	separator      Separator
+	cmdColSize     uint
+	flagColSize    uint
 }
 
 // Option option type for Parser

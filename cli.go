@@ -12,6 +12,18 @@ import (
 	"github.com/scylladb/go-set/strset"
 )
 
+type Descriptioner interface {
+	Description() string
+}
+
+type Helper interface {
+	Help() string
+}
+
+type Versioner interface {
+	Version() string
+}
+
 var defaultCLI = NewCLI()
 
 // CLI is the cli parser
@@ -61,6 +73,12 @@ func NewCLI(options ...Option) *CLI {
 	if !(opts.separator == SeparatorEquals || opts.separator == SeparatorSpace) {
 		opts.separator = SeparatorSpace
 	}
+	if opts.cmdColSize == 0 {
+		opts.cmdColSize = 13
+	}
+	if opts.flagColSize == 0 {
+		opts.flagColSize = 23
+	}
 	cli.options = opts
 	cli.completeOut = os.Stdout
 	cli.helpOut = os.Stdout
@@ -80,11 +98,11 @@ func (cli *CLI) NewRootCommand(name string, arg interface{}) {
 	}
 	path := cli.addRoot(arg)
 	c := &command{
-		path:   path,
-		Name:   name,
-		subcmd: map[string]*command{},
-		flags:  newFlagSet(),
-		opts:   cli.options,
+		path:       path,
+		Name:       name,
+		subcmdsMap: map[string]*command{},
+		flags:      newFlagSet(),
+		opts:       cli.options,
 	}
 	cli.cmds[name] = c
 	cli.walkStruct(c, t, path, "", "", false, strset.New())
@@ -111,9 +129,14 @@ func (cli *CLI) Parse(args []string) (err error) {
 	}
 
 	// check required
-	for _, a := range p.curCmd.AllFlags() {
-		if a.required && !a.isSet {
+	for _, a := range p.currentCmd().Flags() {
+		if a.required && !a.IsSet() {
 			return fmt.Errorf("required flag not set: %s", a.long)
+		}
+	}
+	for _, a := range p.currentCmd().Positionals() {
+		if a.required && !a.IsSet() {
+			return fmt.Errorf("required argument not set: %s", a.placeholder)
 		}
 	}
 
@@ -213,7 +236,7 @@ func (cli *CLI) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx st
 			if tag.cmd != "" {
 				cname = tag.cmd
 			}
-			sc := c.AddSubcommand(cname, spth)
+			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Help))
 			cli.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
 			continue
 		}

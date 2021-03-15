@@ -6,23 +6,13 @@ import (
 	"strings"
 )
 
-var namedCompleteres = map[string]Completer{
-	"files": NewFuncCmpleter(filesCompleter),
-	"hosts": NewFuncCmpleter(hostsCompleter),
-}
-
-func RegisterNamedCompleter(name string, comp Completer) {
-	namedCompleteres[name] = comp
-}
-
-func getNamedCompleter(name string) Completer {
-	return namedCompleteres[name]
-}
-
+// Completer interface
 type Completer interface {
+	// Complete returns suggestions filtered by val
 	Complete(val string) []string
 }
 
+// FuncCompleter creates a Completer from a func of the same signature
 type FuncCompleter struct {
 	f func(val string) []string
 }
@@ -31,8 +21,23 @@ func (fc *FuncCompleter) Complete(val string) []string {
 	return fc.f(val)
 }
 
+// NewFuncCmpleter instantiates a new FuncCompleter from f
 func NewFuncCmpleter(f func(val string) []string) *FuncCompleter {
 	return &FuncCompleter{f}
+}
+
+var namedCompleteres = map[string]Completer{
+	"files": NewFuncCmpleter(filesCompleter),
+	"hosts": NewFuncCmpleter(hostsCompleter),
+}
+
+// RegisterNamedCompleter adds named completers to be accessed by struct tag `complete:""`
+func RegisterNamedCompleter(name string, comp Completer) {
+	namedCompleteres[name] = comp
+}
+
+func getNamedCompleter(name string) Completer {
+	return namedCompleteres[name]
 }
 
 var filesCompleter = func(val string) []string {

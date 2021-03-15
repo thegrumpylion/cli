@@ -67,7 +67,7 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, sc := range strcmds {
-		if _, ok := root.subcmd[sc]; !ok {
+		if _, ok := root.subcmdsMap[sc]; !ok {
 			t.Fatalf("cmd %s not found\n", sc)
 		}
 	}

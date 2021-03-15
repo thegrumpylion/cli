@@ -3,7 +3,6 @@ package cnc
 import (
 	"encoding"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -23,17 +22,15 @@ func newParser(cli *CLI) *parser {
 }
 
 type parser struct {
-	cli         *CLI
-	globals     *flagSet
-	curArg      *argument
-	curCmd      *command
-	curPos      int
-	allPos      bool
-	execList    []interface{}
-	isComp      bool
-	completeOut io.Writer
-	isLast      bool
-	expectCmd   bool
+	cli       *CLI
+	globals   *flagSet
+	curArg    *argument
+	curCmd    *command
+	curPos    int
+	allPos    bool
+	execList  []interface{}
+	isComp    bool
+	expectCmd bool
 }
 
 type Token int
@@ -93,22 +90,22 @@ func (p *parser) Run(args []string) (err error) {
 		if p.allPos {
 			os.Exit(0)
 		}
-		var completer Completer = NewFuncCmpleter(p.curCmd.CompleteSubcommands)
+		var completer Completer = NewFuncCmpleter(p.currentCmd().CompleteSubcommands)
 		val := args[len(args)-1]
 		switch t {
 		case COMPFLAG:
 			fg, vl := splitCompositeFlag(val)
-			flg := p.curCmd.GetFlag(fg)
+			flg := p.currentCmd().GetFlag(fg)
 			if flg != nil {
 				completer = flg
 				val = vl
 			}
 		case VAL:
-			if lt == FLAG && !p.curArg.IsBool() {
-				completer = p.curArg
+			if lt == FLAG && !p.currentArg().IsBool() {
+				completer = p.currentArg()
 			}
 		case FLAG, ALLPOS:
-			completer = NewFuncCmpleter(p.curCmd.CompleteFlags)
+			completer = NewFuncCmpleter(p.currentCmd().CompleteFlags)
 		}
 		if completer != nil {
 			for _, v := range completer.Complete(val) {
@@ -127,17 +124,30 @@ func (p *parser) ExecList() []interface{} {
 func (p *parser) setCurrentCmd(c *command) {
 	p.curCmd = c
 	if p.cli.options.globalsEnabled {
-		for _, a := range p.curCmd.AllFlags() {
+		for _, a := range p.currentCmd().Flags() {
 			if a.global {
 				p.globals.Add(a)
 			}
 		}
 	}
 	// add subcommand to execution list
-	p.execList = append(p.execList, p.curCmd.path.Get())
+	p.execList = append(p.execList, p.currentCmd().path.Get())
+}
+
+func (p *parser) currentCmd() *command {
+	return p.curCmd
+}
+
+func (p *parser) setCurrentArg(a *argument) {
+	p.curArg = a
+}
+
+func (p *parser) currentArg() *argument {
+	return p.curArg
 }
 
 func (p *parser) entryState(s string, t Token) (StateFunc, error) {
+	fmt.Println("entryState", s, t)
 	p.expectCmd = true
 	switch t {
 	case VAL:
@@ -157,10 +167,11 @@ func (p *parser) entryState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
+	fmt.Println("cmdState", s, t)
 	if t != CMD {
 		return nil, fmt.Errorf("unexpected token: %d at cmdState", t)
 	}
-	cc, ok := p.curCmd.subcmd[s]
+	cc, ok := p.currentCmd().LookupSubcommand(s)
 	if !ok {
 		return nil, ErrCommandNotFound{s}
 	}
@@ -169,13 +180,15 @@ func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
+	fmt.Println("posArgState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at posArgState", t)
 	}
-	if p.curPos == len(p.curCmd.positionals) {
+	if p.curPos == len(p.currentCmd().positionals) {
 		return nil, fmt.Errorf("too many positional arguments")
 	}
-	a := p.curCmd.positionals[p.curPos]
+	a := p.currentCmd().positionals[p.curPos]
+	p.setCurrentArg(a)
 	p.curPos++
 	if a.isSlice {
 		return p.sliceValueState(s, t)
@@ -184,10 +197,11 @@ func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) valueState(s string, t Token) (StateFunc, error) {
+	fmt.Println("valueState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
 	}
-	a := p.curArg
+	a := p.currentArg()
 	if a.enum != nil {
 		if err := a.SetValue(a.enum.Value(s)); err != nil {
 			return nil, err
@@ -200,16 +214,17 @@ func (p *parser) valueState(s string, t Token) (StateFunc, error) {
 		}
 		return p.entryState, nil
 	}
-	if err := p.curArg.SetScalarValue(s); err != nil {
+	if err := p.currentArg().SetScalarValue(s); err != nil {
 		return nil, err
 	}
 	return p.entryState, nil
 }
 func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
+	fmt.Println("sliceValueState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at sliceValueState", t)
 	}
-	a := p.curArg
+	a := p.currentArg()
 	if err := a.Append(s); err != nil {
 		return nil, err
 	}
@@ -217,17 +232,18 @@ func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) flagState(s string, t Token) (StateFunc, error) {
+	fmt.Println("flagState", s, t)
 	if t != FLAG {
 		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
 	}
 	if p.cli.isHelp(s) {
-		p.curCmd.Usage(p.cli.helpOut)
+		p.currentCmd().Usage(p.cli.helpOut)
 		os.Exit(0)
 	}
 	if p.cli.isVersion(s) {
 		// handle version
 	}
-	a := p.curCmd.GetFlag(s)
+	a := p.currentCmd().GetFlag(s)
 	if a == nil {
 		if p.cli.options.globalsEnabled {
 			if a = p.globals.Get(s); a == nil {
@@ -237,7 +253,7 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 			return nil, ErrNoSuchFlag{s}
 		}
 	}
-	p.curArg = a
+	p.setCurrentArg(a)
 	if a.IsBool() {
 		return p.valueState("true", VAL)
 	}
@@ -249,13 +265,14 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
+	fmt.Println("compositFlagState", s, t)
 	if t != COMPFLAG {
 		return nil, fmt.Errorf("unexpected token: %d at compositFlagState", t)
 	}
 	i := strings.Index(s, "=")
 	flg := s[:i]
 	val := s[i+1:]
-	a := p.curCmd.GetFlag(flg)
+	a := p.currentCmd().GetFlag(flg)
 	if a == nil {
 		if p.cli.options.globalsEnabled {
 			fmt.Println("glob", p.globals.All())
@@ -266,7 +283,7 @@ func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
 			return nil, ErrNoSuchFlag{s}
 		}
 	}
-	p.curArg = a
+	p.setCurrentArg(a)
 	if a.isSlice {
 		return p.sliceValueState(s, VAL)
 	}
@@ -283,7 +300,7 @@ func (p *parser) tokenType(s string) Token {
 	if s == "--" {
 		return ALLPOS
 	}
-	if p.curCmd.subcmd != nil && p.expectCmd {
+	if len(p.currentCmd().subcmdsMap) != 0 && p.expectCmd {
 		return CMD
 	}
 	return VAL

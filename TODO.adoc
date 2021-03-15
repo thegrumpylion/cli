@@ -1,0 +1,5 @@
+= TODO
+
+* [ ] support arrays
+* [ ] support time
+* [ ] support map[string]string, map[string]number, map[string]time
