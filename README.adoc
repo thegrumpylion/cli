@@ -36,8 +36,9 @@ import (
 )
 
 type rootCmd struct {
-	Host  string
-	Port int
+	Host   string
+	Port   int
+	Secure bool
 }
 
 func main() {
@@ -47,16 +48,26 @@ func main() {
 		log.Fatalln("error:", err)
 	}
 
-	fmt.Println(c.Host, c.Port)
+	fmt.Println(c.Host, c.Port, c.Secure)
 }
 ----
 
-`./cmd --host localhost --port 8080`
+[source,sh]
+----
+./cmd --host localhost --port 8080 --secure
+----
 
-`localhost 8080`
+----
+localhost 8080 true
+----
 
 Can also handle `--flag=value`
 
-`./cmd --host=localhost --port=8080`
+[source,sh]
+----
+./cmd --host=localhost --port=8080 --secure=false
+----
 
-`localhost 8080`
+----
+localhost 8080 false
+----
