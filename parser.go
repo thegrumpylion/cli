@@ -31,6 +31,7 @@ type parser struct {
 	execList  []interface{}
 	isComp    bool
 	expectCmd bool
+	debug     bool
 }
 
 type Token int
@@ -52,14 +53,14 @@ func (p *parser) Run(args []string) (err error) {
 		p.isComp = true
 		args, err = parseCompletion(args)
 		if err != nil {
-			os.Exit(0)
+			p.cli.osExit(0)
 		}
 	}
 
 	c, err := p.cli.findRootCommand(args[0])
 	if err != nil {
 		if isComp {
-			os.Exit(0)
+			p.cli.osExit(0)
 		}
 		return err
 	}
@@ -81,16 +82,21 @@ func (p *parser) Run(args []string) (err error) {
 		state, err = state(a, t)
 		if err != nil {
 			if isComp {
-				os.Exit(0)
+				p.cli.osExit(0)
 			}
 			return err
 		}
 	}
 	if p.isComp {
 		if p.allPos {
-			os.Exit(0)
+			p.cli.osExit(0)
 		}
-		var completer Completer = NewFuncCmpleter(p.currentCmd().CompleteSubcommands)
+		var completer Completer
+		if p.currentCmd().HasSubcommands() {
+			completer = NewFuncCmpleter(p.currentCmd().CompleteSubcommands)
+		} else {
+			completer = NewFuncCmpleter(p.currentCmd().CompleteFlags)
+		}
 		val := args[len(args)-1]
 		switch t {
 		case COMPFLAG:
@@ -112,7 +118,7 @@ func (p *parser) Run(args []string) (err error) {
 				fmt.Fprintln(p.cli.completeOut, v)
 			}
 		}
-		os.Exit(0)
+		p.cli.osExit(0)
 	}
 	return nil
 }
@@ -147,7 +153,7 @@ func (p *parser) currentArg() *argument {
 }
 
 func (p *parser) entryState(s string, t Token) (StateFunc, error) {
-	fmt.Println("entryState", s, t)
+	p.debugln("entryState", s, t)
 	p.expectCmd = true
 	switch t {
 	case VAL:
@@ -167,7 +173,7 @@ func (p *parser) entryState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
-	fmt.Println("cmdState", s, t)
+	p.debugln("cmdState", s, t)
 	if t != CMD {
 		return nil, fmt.Errorf("unexpected token: %d at cmdState", t)
 	}
@@ -180,7 +186,7 @@ func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
-	fmt.Println("posArgState", s, t)
+	p.debugln("posArgState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at posArgState", t)
 	}
@@ -197,7 +203,7 @@ func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) valueState(s string, t Token) (StateFunc, error) {
-	fmt.Println("valueState", s, t)
+	p.debugln("valueState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
 	}
@@ -220,7 +226,7 @@ func (p *parser) valueState(s string, t Token) (StateFunc, error) {
 	return p.entryState, nil
 }
 func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
-	fmt.Println("sliceValueState", s, t)
+	p.debugln("sliceValueState", s, t)
 	if t != VAL {
 		return nil, fmt.Errorf("unexpected token: %d at sliceValueState", t)
 	}
@@ -232,13 +238,13 @@ func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) flagState(s string, t Token) (StateFunc, error) {
-	fmt.Println("flagState", s, t)
+	p.debugln("flagState", s, t)
 	if t != FLAG {
 		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
 	}
 	if p.cli.isHelp(s) {
 		p.currentCmd().Usage(p.cli.helpOut)
-		os.Exit(0)
+		p.cli.osExit(0)
 	}
 	if p.cli.isVersion(s) {
 		// handle version
@@ -265,7 +271,7 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 }
 
 func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
-	fmt.Println("compositFlagState", s, t)
+	p.debugln("compositFlagState", s, t)
 	if t != COMPFLAG {
 		return nil, fmt.Errorf("unexpected token: %d at compositFlagState", t)
 	}
@@ -304,6 +310,12 @@ func (p *parser) tokenType(s string) Token {
 		return CMD
 	}
 	return VAL
+}
+
+func (p *parser) debugln(a ...interface{}) {
+	if p.debug {
+		fmt.Println(a...)
+	}
 }
 
 func parseCompletion(args []string) ([]string, error) {

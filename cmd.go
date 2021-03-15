@@ -158,6 +158,9 @@ func (c *command) ArgumentDescription() (out []string) {
 func (c *command) CompleteFlags(val string) (out []string) {
 	for _, v := range c.Flags() {
 		if strings.HasPrefix(v.long, val) {
+			if v.IsSet() && !v.isSlice {
+				continue
+			}
 			o := v.long + string(c.opts.separator)
 			if v.IsBool() {
 				o = v.long + " "

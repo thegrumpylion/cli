@@ -26,7 +26,7 @@ type Versioner interface {
 
 var defaultCLI = NewCLI()
 
-// CLI is the cli parser
+// CLI holds the cli state and configration
 type CLI struct {
 	options     *cliOptions
 	roots       []reflect.Value
@@ -35,15 +35,16 @@ type CLI struct {
 	helpOut     io.Writer
 	errorOut    io.Writer
 	completeOut io.Writer
-
-	execList []interface{}
+	execList    []interface{}
+	osExit      func(int)
 }
 
-// NewCLI create new parser
+// NewCLI create new CLI
 func NewCLI(options ...Option) *CLI {
 	cli := &CLI{
-		cmds:  map[string]*command{},
-		enums: map[reflect.Type]*enum{},
+		cmds:   map[string]*command{},
+		enums:  map[reflect.Type]*enum{},
+		osExit: os.Exit,
 	}
 	opts := &cliOptions{
 		argCase:     CaseCamelLower,
@@ -85,18 +86,32 @@ func NewCLI(options ...Option) *CLI {
 	return cli
 }
 
-// NewRootCommand add new root command to defaultCLI
-func NewRootCommand(name string, arg interface{}) {
-	defaultCLI.NewRootCommand(name, arg)
+// ParseCommand creates a new root command from 1st OS arg
+// and cmd and parses os.Args as input on default CLI
+func ParseCommand(cmd interface{}) error {
+	NewRootCommand(filepath.Base(os.Args[0]), cmd)
+	return Parse(os.Args)
 }
 
-// NewRootCommand add new root command to this parser
-func (cli *CLI) NewRootCommand(name string, arg interface{}) {
-	t := reflect.TypeOf(arg)
+// ParseCommand creates a new root command from 1st OS arg
+// and cmd and parses os.Args as input
+func (cli *CLI) ParseCommand(cmd interface{}) error {
+	cli.NewRootCommand(filepath.Base(os.Args[0]), cmd)
+	return cli.Parse(os.Args)
+}
+
+// NewRootCommand add new root command to defaultCLI
+func NewRootCommand(name string, cmd interface{}) {
+	defaultCLI.NewRootCommand(name, cmd)
+}
+
+// NewRootCommand add new root command to this CLI
+func (cli *CLI) NewRootCommand(name string, cmd interface{}) {
+	t := reflect.TypeOf(cmd)
 	if t.Kind() != reflect.Ptr && t.Elem().Kind() != reflect.Struct {
 		panic("not ptr to struct")
 	}
-	path := cli.addRoot(arg)
+	path := cli.addRoot(cmd)
 	c := &command{
 		path:       path,
 		Name:       name,
@@ -145,7 +160,7 @@ func (cli *CLI) Parse(args []string) (err error) {
 	return nil
 }
 
-// RegisterEnum resgister an enum map to the default parser
+// RegisterEnum resgister an enum map to the default CLI
 func RegisterEnum(enumMap interface{}) {
 	defaultCLI.RegisterEnum(enumMap)
 }
@@ -174,7 +189,14 @@ func (cli *CLI) isVersion(arg string) bool {
 
 var textUnmarshaler = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
-func (cli *CLI) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx string, isArg bool, globals *strset.Set) {
+func (cli *CLI) walkStruct(
+	c *command,
+	t reflect.Type,
+	pth *path,
+	pfx, envpfx string,
+	isArg bool,
+	globals *strset.Set,
+) {
 	if isPtr(t) {
 		t = t.Elem()
 	}
@@ -227,7 +249,7 @@ func (cli *CLI) walkStruct(c *command, t reflect.Type, pth *path, pfx, envpfx st
 			}
 			// is a ptr to struct but isArg in tag is set or
 			// is normal struct so this is an arg
-			if tag.isArg || !isPtr(fldType) {
+			if tag.noCmd || !isPtr(fldType) {
 				cli.walkStruct(c, fldType, spth, name, env, true, globals)
 				continue
 			}

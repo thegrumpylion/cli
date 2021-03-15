@@ -18,7 +18,7 @@ type clitag struct {
 	env        string
 	required   bool
 	positional bool
-	isArg      bool
+	noCmd      bool
 	cmd        string
 	global     bool
 }
@@ -50,8 +50,8 @@ func parseCliTag(s string) *clitag {
 			tag.positional = true
 		case "global":
 			tag.global = true
-		case "arg":
-			tag.isArg = true
+		case "nocmd":
+			tag.noCmd = true
 		case "cmd":
 			tag.cmd = val
 		}

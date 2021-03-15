@@ -26,6 +26,7 @@ func TestCase(t *testing.T) {
 		CaseCamelLower: {
 			caseTest{in: "WhatEver", out: "whatEver"},
 			caseTest{in: "whatEver", out: "whatEver"},
+			caseTest{in: "whatEverDB", out: "whatEverDB"},
 		},
 		CaseSnake: {
 			caseTest{in: "WhatEver", out: "what_ever"},

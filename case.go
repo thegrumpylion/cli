@@ -2,6 +2,7 @@ package cnc
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/iancoleman/strcase"
 )
@@ -40,6 +41,9 @@ func (c Case) Parse(s string) string {
 	case CaseCamel:
 		return strcase.ToCamel(s)
 	case CaseCamelLower:
+		if isUpper(s) {
+			return strings.ToLower(s)
+		}
 		return strcase.ToLowerCamel(s)
 	case CaseSnake:
 		return strcase.ToSnake(s)
@@ -80,4 +84,13 @@ func (s Splicer) Splice(a, b string) string {
 	default:
 		return a + b
 	}
+}
+
+func isUpper(s string) bool {
+	for _, r := range s {
+		if !unicode.IsUpper(r) && unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }

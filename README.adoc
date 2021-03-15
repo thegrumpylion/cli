@@ -14,3 +14,49 @@
  | |___| |__| | |\  | |__| | |__| | |____| | \ \   
   \_____\____/|_| \_|\___\_\\____/|______|_|  \_\  
 
+'''
+
+Struct-based CLI library for Go
+
+== Status
+
+This project is alpha. It lacks in documentation, testing and featres. It's out for feedback and bug reports. Expect bugs and breaking changes.
+
+== Parsing
+
+[source,go]
+----
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/thegrumpylion/cnc"
+)
+
+type rootCmd struct {
+	Host  string
+	Port int
+}
+
+func main() {
+	c := &rootCmd{}
+
+	if err := cnc.ParseCommand(c); err != nil {
+		log.Fatalln("error:", err)
+	}
+
+	fmt.Println(c.Host, c.Port)
+}
+----
+
+`./cmd --host localhost --port 8080`
+
+`localhost 8080`
+
+Can also handle `--flag=value`
+
+`./cmd --host=localhost --port=8080`
+
+`localhost 8080`

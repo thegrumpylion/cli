@@ -1,5 +1,9 @@
 = TODO
 
+* [ ] implement default value logic
+* [ ] handle env
 * [ ] support arrays
 * [ ] support time
 * [ ] support map[string]string, map[string]number, map[string]time
+* [ ] rename help tag to usage
+* [ ] struct errors & error handling
