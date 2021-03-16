@@ -1,6 +1,7 @@
 package cnc
 
 import (
+	"context"
 	"encoding"
 	"fmt"
 	"io"
@@ -86,27 +87,43 @@ func NewCLI(options ...Option) *CLI {
 	return cli
 }
 
+// ParseCommandAndExecute combines ParseCommand & Execute
+func ParseCommandAndExecute(ctx context.Context, cmd interface{}) error {
+	if err := ParseCommand(cmd); err != nil {
+		return err
+	}
+	return Execute(ctx)
+}
+
+// ParseCommandAndExecute combines ParseCommand & Execute
+func (cli *CLI) ParseCommandAndExecute(ctx context.Context, cmd interface{}) error {
+	if err := cli.ParseCommand(cmd); err != nil {
+		return err
+	}
+	return cli.Execute(ctx)
+}
+
 // ParseCommand creates a new root command from 1st OS arg
 // and cmd and parses os.Args as input on default CLI
 func ParseCommand(cmd interface{}) error {
-	NewRootCommand(filepath.Base(os.Args[0]), cmd)
+	NewCommand(filepath.Base(os.Args[0]), cmd)
 	return Parse(os.Args)
 }
 
 // ParseCommand creates a new root command from 1st OS arg
 // and cmd and parses os.Args as input
 func (cli *CLI) ParseCommand(cmd interface{}) error {
-	cli.NewRootCommand(filepath.Base(os.Args[0]), cmd)
+	cli.NewCommand(filepath.Base(os.Args[0]), cmd)
 	return cli.Parse(os.Args)
 }
 
-// NewRootCommand add new root command to defaultCLI
-func NewRootCommand(name string, cmd interface{}) {
-	defaultCLI.NewRootCommand(name, cmd)
+// NewCommand add new root command to defaultCLI
+func NewCommand(name string, cmd interface{}) {
+	defaultCLI.NewCommand(name, cmd)
 }
 
-// NewRootCommand add new root command to this CLI
-func (cli *CLI) NewRootCommand(name string, cmd interface{}) {
+// NewCommand add new root command to this CLI
+func (cli *CLI) NewCommand(name string, cmd interface{}) {
 	t := reflect.TypeOf(cmd)
 	if t.Kind() != reflect.Ptr && t.Elem().Kind() != reflect.Struct {
 		panic("not ptr to struct")

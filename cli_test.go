@@ -56,7 +56,7 @@ func TestParse(t *testing.T) {
 		"embcmd",
 	}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	root := defaultCLI.cmds["root"]
 
@@ -94,7 +94,7 @@ func TestEnumRegistration(t *testing.T) {
 	}{}
 
 	RegisterEnum(enumMap)
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 	err := Parse([]string{"root", "--enum", "dio"})
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestString(t *testing.T) {
 		String string
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	err := Parse([]string{"root", "--string", "stringVal"})
 	if err != nil {
@@ -132,7 +132,7 @@ func TestInt(t *testing.T) {
 		Int64 int64
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	err := Parse([]string{"root", "--int", "-23", "--int8", "-3", "--int16", "-24000", "--int32", "-70123", "--int64", "-10200300"})
 	if err != nil {
@@ -169,7 +169,7 @@ func TestUint(t *testing.T) {
 		Uint64 uint64
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	err := Parse([]string{"root", "--uint", "23", "--uint8", "3", "--uint16", "24000", "--uint32", "70123", "--uint64", "10200300"})
 	if err != nil {
@@ -202,7 +202,7 @@ func TestSliceArg(t *testing.T) {
 		Names []string
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	err := Parse([]string{"root", "--names", "maria", "--names", "andreas", "--names", "giannis"})
 	if err != nil {
@@ -222,7 +222,7 @@ type SubCmdA struct {
 }
 
 func (c *SubCmdA) Run(ctx context.Context) error {
-	v := ctx.Value("testState")
+	v := ctx.Value(testStateKey{})
 	if v == nil {
 		return errors.New("SubCmdA.Run: testState not found in context")
 	}
@@ -242,7 +242,7 @@ type SubCmdB struct {
 }
 
 func (c *SubCmdB) Run(ctx context.Context) error {
-	v := ctx.Value("testState")
+	v := ctx.Value(testStateKey{})
 	if v == nil {
 		return errors.New("SubCmdB.Run: testState not found in context")
 	}
@@ -263,7 +263,7 @@ type RootCmd struct {
 }
 
 func (c *RootCmd) PersistentPreRun(ctx context.Context) error {
-	v := ctx.Value("testState")
+	v := ctx.Value(testStateKey{})
 	if v == nil {
 		return errors.New("RootCmd.PersistentPreRun: testState not found in context")
 	}
@@ -282,10 +282,12 @@ type testState struct {
 	subb bool
 }
 
+type testStateKey struct{}
+
 func TestExecuteRoot(t *testing.T) {
 	a := &RootCmd{}
 
-	NewRootCommand("root", a)
+	NewCommand("root", a)
 
 	err := Parse([]string{"root"})
 	if err != nil {
@@ -294,7 +296,7 @@ func TestExecuteRoot(t *testing.T) {
 
 	state := &testState{t: t}
 
-	ctx := context.WithValue(context.Background(), "testState", state)
+	ctx := context.WithValue(context.Background(), testStateKey{}, state)
 	err = Execute(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -308,7 +310,7 @@ func TestExecuteRoot(t *testing.T) {
 func TestExecuteSubA(t *testing.T) {
 	a := &RootCmd{}
 
-	NewRootCommand("root", a)
+	NewCommand("root", a)
 
 	err := Parse([]string{"root", "suba", "--name", "tester"})
 	if err != nil {
@@ -317,7 +319,7 @@ func TestExecuteSubA(t *testing.T) {
 
 	state := &testState{t: t}
 
-	ctx := context.WithValue(context.Background(), "testState", state)
+	ctx := context.WithValue(context.Background(), testStateKey{}, state)
 	err = Execute(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +337,7 @@ func TestExecuteSubA(t *testing.T) {
 func TestExecuteSubB(t *testing.T) {
 	a := &RootCmd{}
 
-	NewRootCommand("root", a)
+	NewCommand("root", a)
 
 	err := Parse([]string{"root", "subb", "--num", "42"})
 	if err != nil {
@@ -344,7 +346,7 @@ func TestExecuteSubB(t *testing.T) {
 
 	state := &testState{t: t}
 
-	ctx := context.WithValue(context.Background(), "testState", state)
+	ctx := context.WithValue(context.Background(), testStateKey{}, state)
 	err = Execute(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -380,7 +382,7 @@ func TestTextUnmarshaler(t *testing.T) {
 		Pair *tUm
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	err := Parse([]string{"root", "--pair", "theKey:theValue"})
 	if err != nil {
@@ -406,7 +408,7 @@ func TestEnvDefaultCase(t *testing.T) {
 		}
 	}{}
 
-	NewRootCommand("root", args)
+	NewCommand("root", args)
 
 	root := defaultCLI.cmds["root"]
 
@@ -426,7 +428,7 @@ func TestGlobals(t *testing.T) {
 		G      string `cli:"global"`
 	}{}
 	p := NewCLI(WithGlobalArgsEnabled())
-	p.NewRootCommand("root", args)
+	p.NewCommand("root", args)
 	err := p.Parse([]string{"root", "subcmd", "--a", "a", "--b", "1", "--g", "global"})
 	if err != nil {
 		t.Fatalf("eval: %v", err)
@@ -456,7 +458,7 @@ func TestGlobalsConflict(t *testing.T) {
 			t.Fatal("should have paniced globals conflict")
 		}
 	}()
-	p.NewRootCommand("root", args)
+	p.NewCommand("root", args)
 }
 
 func TestIsFlag(t *testing.T) {

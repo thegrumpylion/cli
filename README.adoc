@@ -22,13 +22,14 @@ Struct-based CLI library for Go
 
 This project is alpha. It lacks in documentation, testing and featres. It's out for feedback and bug reports. Expect bugs and breaking changes.
 
-== Parsing
+== Example
 
 [source,go]
 ----
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -36,38 +37,70 @@ import (
 )
 
 type rootCmd struct {
-	Host   string
-	Port   int
-	Secure bool
+	Host string
+	Port int
+}
+
+func (c *rootCmd) Run(ctx context.Context) error {
+	fmt.Println(c.Host, c.Port)
+	return nil
 }
 
 func main() {
 	c := &rootCmd{}
 
-	if err := cnc.ParseCommand(c); err != nil {
+	if err := cnc.ParseCommandAndExecute(context.Background(), c); err != nil {
 		log.Fatalln("error:", err)
 	}
-
-	fmt.Println(c.Host, c.Port, c.Secure)
 }
 ----
 
 [source,sh]
 ----
-./cmd --host localhost --port 8080 --secure
+./cmd --host localhost --port 8080
 ----
 
 ----
-localhost 8080 true
+localhost 8080
 ----
 
 Can also handle `--flag=value`
 
 [source,sh]
 ----
-./cmd --host=localhost --port=8080 --secure=false
+./cmd --host=localhost --port=8080
 ----
 
 ----
-localhost 8080 false
+localhost 8080
+----
+
+=== Help
+
+[source,sh]
+----
+./cmd --help
+----
+
+----
+Usage:
+  cmd [--host HOST] [--port PORT]
+
+Flags:
+      --host             
+      --port
+----
+
+=== Completion
+
+[source,sh]
+----
+complete -o nospace -C ./cmd ./cmd
+----
+
+----
+$ ./cmd <TAB>
+$ ./cmd --<TAB><TAB>
+--host   --port
+$ ./cmd --
 ----
