@@ -1,20 +1,4 @@
-   _____ ____  __  __ __  __          _   _ _____  
-  / ____/ __ \|  \/  |  \/  |   /\   | \ | |  __ \ 
- | |   | |  | | \  / | \  / |  /  \  |  \| | |  | |
- | |   | |  | | |\/| | |\/| | / /\ \ | . ` | |  | |
- | |___| |__| | |  | | |  | |/ ____ \| |\  | |__| |
-  \_____\____/|_|  |_|_|__|_/_/    \_\_| \_|_____/ 
-  ______ ______ ______( _ )  ______ ______ ______  
- |______|______|______/ _ \/\______|______|______| 
-                     | (_>  <                      
-   _____ ____  _   _  \___/\/    _ ______ _____    
-  / ____/ __ \| \ | |/ __ \| |  | |  ____|  __ \   
- | |   | |  | |  \| | |  | | |  | | |__  | |__) |  
- | |   | |  | | . ` | |  | | |  | |  __| |  _  /   
- | |___| |__| | |\  | |__| | |__| | |____| | \ \   
-  \_____\____/|_| \_|\___\_\\____/|______|_|  \_\  
-
-'''
+= CLI
 
 Struct-based CLI library for Go
 
@@ -33,7 +17,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/thegrumpylion/cnc"
+	"github.com/thegrumpylion/cli"
 )
 
 type rootCmd struct {
@@ -49,7 +33,7 @@ func (c *rootCmd) Run(ctx context.Context) error {
 func main() {
 	c := &rootCmd{}
 
-	if err := cnc.ParseCommandAndExecute(context.Background(), c); err != nil {
+	if err := cli.ParseCommandAndExecute(context.Background(), c); err != nil {
 		log.Fatalln("error:", err)
 	}
 }
@@ -64,7 +48,7 @@ func main() {
 localhost 8080
 ----
 
-Can also handle `--flag=value`
+Or
 
 [source,sh]
 ----

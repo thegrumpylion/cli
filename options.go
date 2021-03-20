@@ -1,4 +1,4 @@
-package cnc
+package cli
 
 type Separator byte
 

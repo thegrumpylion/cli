@@ -1,4 +1,4 @@
-module github.com/thegrumpylion/cnc
+module github.com/thegrumpylion/cli
 
 go 1.15
 
