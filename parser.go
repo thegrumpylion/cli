@@ -34,17 +34,17 @@ type parser struct {
 	debug     bool
 }
 
-type Token int
+type parserToken int
 
 const (
-	VAL Token = iota
-	CMD
-	FLAG
-	COMPFLAG
-	ALLPOS
+	tokVAL parserToken = iota
+	tokCMD
+	tokFLAG
+	tokCOMPFLAG
+	tokALLPOS
 )
 
-type StateFunc func(s string, t Token) (StateFunc, error)
+type StateFunc func(s string, t parserToken) (StateFunc, error)
 
 func (p *parser) Run(args []string) (err error) {
 
@@ -68,13 +68,13 @@ func (p *parser) Run(args []string) (err error) {
 
 	args = args[1:]
 	state := p.entryState
-	var t, lt Token
+	var t, lt parserToken
 
 	for i, a := range args {
 		lt = t
 		t = p.tokenType(a)
 		if p.allPos {
-			t = VAL
+			t = tokVAL
 		}
 		if p.isComp && i == len(args)-1 {
 			break
@@ -99,18 +99,18 @@ func (p *parser) Run(args []string) (err error) {
 		}
 		val := args[len(args)-1]
 		switch t {
-		case COMPFLAG:
+		case tokCOMPFLAG:
 			fg, vl := splitCompositeFlag(val)
 			flg := p.currentCmd().GetFlag(fg)
 			if flg != nil {
 				completer = flg
 				val = vl
 			}
-		case VAL:
-			if lt == FLAG && !p.currentArg().IsBool() {
+		case tokVAL:
+			if lt == tokFLAG && !p.currentArg().IsBool() {
 				completer = p.currentArg()
 			}
-		case FLAG, ALLPOS:
+		case tokFLAG, tokALLPOS:
 			completer = NewFuncCmpleter(p.currentCmd().CompleteFlags)
 		}
 		if completer != nil {
@@ -152,19 +152,19 @@ func (p *parser) currentArg() *argument {
 	return p.curArg
 }
 
-func (p *parser) entryState(s string, t Token) (StateFunc, error) {
+func (p *parser) entryState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("entryState", s, t)
 	p.expectCmd = true
 	switch t {
-	case VAL:
+	case tokVAL:
 		return p.posArgState(s, t)
-	case CMD:
+	case tokCMD:
 		return p.cmdState(s, t)
-	case FLAG:
+	case tokFLAG:
 		return p.flagState(s, t)
-	case COMPFLAG:
+	case tokCOMPFLAG:
 		return p.compositFlagState(s, t)
-	case ALLPOS:
+	case tokALLPOS:
 		p.allPos = true
 		return p.entryState, nil
 	default:
@@ -172,9 +172,9 @@ func (p *parser) entryState(s string, t Token) (StateFunc, error) {
 	}
 }
 
-func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
+func (p *parser) cmdState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("cmdState", s, t)
-	if t != CMD {
+	if t != tokCMD {
 		return nil, fmt.Errorf("unexpected token: %d at cmdState", t)
 	}
 	cc, ok := p.currentCmd().LookupSubcommand(s)
@@ -185,9 +185,9 @@ func (p *parser) cmdState(s string, t Token) (StateFunc, error) {
 	return p.entryState, nil
 }
 
-func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
+func (p *parser) posArgState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("posArgState", s, t)
-	if t != VAL {
+	if t != tokVAL {
 		return nil, fmt.Errorf("unexpected token: %d at posArgState", t)
 	}
 	if p.curPos == len(p.currentCmd().positionals) {
@@ -202,9 +202,9 @@ func (p *parser) posArgState(s string, t Token) (StateFunc, error) {
 	return p.valueState(s, t)
 }
 
-func (p *parser) valueState(s string, t Token) (StateFunc, error) {
+func (p *parser) valueState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("valueState", s, t)
-	if t != VAL {
+	if t != tokVAL {
 		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
 	}
 	a := p.currentArg()
@@ -225,9 +225,9 @@ func (p *parser) valueState(s string, t Token) (StateFunc, error) {
 	}
 	return p.entryState, nil
 }
-func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
+func (p *parser) sliceValueState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("sliceValueState", s, t)
-	if t != VAL {
+	if t != tokVAL {
 		return nil, fmt.Errorf("unexpected token: %d at sliceValueState", t)
 	}
 	a := p.currentArg()
@@ -237,9 +237,9 @@ func (p *parser) sliceValueState(s string, t Token) (StateFunc, error) {
 	return p.entryState, nil
 }
 
-func (p *parser) flagState(s string, t Token) (StateFunc, error) {
+func (p *parser) flagState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("flagState", s, t)
-	if t != FLAG {
+	if t != tokFLAG {
 		return nil, fmt.Errorf("unexpected token: %d at flagState", t)
 	}
 	if p.cli.isHelp(s) {
@@ -261,7 +261,7 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 	}
 	p.setCurrentArg(a)
 	if a.IsBool() {
-		return p.valueState("true", VAL)
+		return p.valueState("true", tokVAL)
 	}
 	p.expectCmd = false
 	if a.isSlice {
@@ -270,9 +270,9 @@ func (p *parser) flagState(s string, t Token) (StateFunc, error) {
 	return p.valueState, nil
 }
 
-func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
+func (p *parser) compositFlagState(s string, t parserToken) (StateFunc, error) {
 	p.debugln("compositFlagState", s, t)
-	if t != COMPFLAG {
+	if t != tokCOMPFLAG {
 		return nil, fmt.Errorf("unexpected token: %d at compositFlagState", t)
 	}
 	i := strings.Index(s, "=")
@@ -291,25 +291,25 @@ func (p *parser) compositFlagState(s string, t Token) (StateFunc, error) {
 	}
 	p.setCurrentArg(a)
 	if a.isSlice {
-		return p.sliceValueState(s, VAL)
+		return p.sliceValueState(s, tokVAL)
 	}
-	return p.valueState(val, VAL)
+	return p.valueState(val, tokVAL)
 }
 
-func (p *parser) tokenType(s string) Token {
+func (p *parser) tokenType(s string) parserToken {
 	if isFlag(s) {
 		if i := strings.Index(s, "="); i != -1 {
-			return COMPFLAG
+			return tokCOMPFLAG
 		}
-		return FLAG
+		return tokFLAG
 	}
 	if s == "--" {
-		return ALLPOS
+		return tokALLPOS
 	}
 	if len(p.currentCmd().subcmdsMap) != 0 && p.expectCmd {
-		return CMD
+		return tokCMD
 	}
-	return VAL
+	return tokVAL
 }
 
 func (p *parser) debugln(a ...interface{}) {
