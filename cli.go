@@ -63,8 +63,8 @@ func NewCLI(options ...Option) *CLI {
 	if opts.tags.Cli == "" {
 		opts.tags.Cli = "cli"
 	}
-	if opts.tags.Help == "" {
-		opts.tags.Help = "help"
+	if opts.tags.Usage == "" {
+		opts.tags.Usage = "usage"
 	}
 	if opts.tags.Default == "" {
 		opts.tags.Default = "default"
@@ -243,7 +243,7 @@ func (cli *CLI) walkStruct(
 
 		// compute env var name
 		env := cli.options.envCase.Parse(fldName)
-		if tag.long != "" {
+		if tag.env != "" {
 			env = tag.env
 		}
 		if envpfx != "" {
@@ -264,8 +264,7 @@ func (cli *CLI) walkStruct(
 				cli.walkStruct(c, fldType, spth, name, env, isArg, globals)
 				continue
 			}
-			// is a ptr to struct but isArg in tag is set or
-			// is normal struct so this is an arg
+			// is a ptr to struct but nocmd in tag is set or is a normal struct then this is an arg
 			if tag.noCmd || !isPtr(fldType) {
 				cli.walkStruct(c, fldType, spth, name, env, true, globals)
 				continue
@@ -275,7 +274,7 @@ func (cli *CLI) walkStruct(
 			if tag.cmd != "" {
 				cname = tag.cmd
 			}
-			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Help))
+			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Usage))
 			cli.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
 			continue
 		}
@@ -320,7 +319,7 @@ func (cli *CLI) walkStruct(
 			positional:  tag.positional,
 			global:      tag.global,
 			def:         fld.Tag.Get(cli.options.tags.Default),
-			help:        fld.Tag.Get(cli.options.tags.Help),
+			help:        fld.Tag.Get(cli.options.tags.Usage),
 			placeholder: strings.ToUpper(name),
 		}
 		c.AddArg(a)

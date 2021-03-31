@@ -8,7 +8,7 @@ import (
 type StructTags struct {
 	Cli      string
 	Default  string
-	Help     string
+	Usage    string
 	Complete string
 }
 
