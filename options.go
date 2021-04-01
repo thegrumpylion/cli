@@ -106,3 +106,17 @@ func WithSeparator(sep Separator) Option {
 		o.separator = sep
 	}
 }
+
+// WithCmdColumnSize sets the command description column size in help
+func WithCmdColumnSize(s uint) Option {
+	return func(o *cliOptions) {
+		o.cmdColSize = s
+	}
+}
+
+// WithFlagColumnSize sets the flag description column size in help
+func WithFlagColumnSize(s uint) Option {
+	return func(o *cliOptions) {
+		o.flagColSize = s
+	}
+}
