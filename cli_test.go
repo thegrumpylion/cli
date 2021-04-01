@@ -297,7 +297,7 @@ func TestExecuteRoot(t *testing.T) {
 	state := &testState{t: t}
 
 	ctx := context.WithValue(context.Background(), testStateKey{}, state)
-	err = Execute(ctx)
+	err = Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestExecuteRoot(t *testing.T) {
 	}
 }
 
-func TestExecuteSubA(t *testing.T) {
+func TestRunSubA(t *testing.T) {
 	a := &RootCmd{}
 
 	NewCommand("root", a)
@@ -320,7 +320,7 @@ func TestExecuteSubA(t *testing.T) {
 	state := &testState{t: t}
 
 	ctx := context.WithValue(context.Background(), testStateKey{}, state)
-	err = Execute(ctx)
+	err = Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestExecuteSubA(t *testing.T) {
 	}
 }
 
-func TestExecuteSubB(t *testing.T) {
+func TestRunSubB(t *testing.T) {
 	a := &RootCmd{}
 
 	NewCommand("root", a)
@@ -347,7 +347,7 @@ func TestExecuteSubB(t *testing.T) {
 	state := &testState{t: t}
 
 	ctx := context.WithValue(context.Background(), testStateKey{}, state)
-	err = Execute(ctx)
+	err = Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

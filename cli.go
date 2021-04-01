@@ -96,20 +96,20 @@ func NewCLI(options ...Option) *CLI {
 	return cli
 }
 
-// ParseCommandAndExecute combines ParseCommand & Execute
-func ParseCommandAndExecute(ctx context.Context, cmd interface{}) error {
+// ParseCommandAndRun combines ParseCommand & Run
+func ParseCommandAndRun(ctx context.Context, cmd interface{}) error {
 	if err := ParseCommand(cmd); err != nil {
 		return err
 	}
-	return Execute(ctx)
+	return Run(ctx)
 }
 
-// ParseCommandAndExecute combines ParseCommand & Execute
-func (cli *CLI) ParseCommandAndExecute(ctx context.Context, cmd interface{}) error {
+// ParseCommandAndRun combines ParseCommand & Run
+func (cli *CLI) ParseCommandAndRun(ctx context.Context, cmd interface{}) error {
 	if err := cli.ParseCommand(cmd); err != nil {
 		return err
 	}
-	return cli.Execute(ctx)
+	return cli.Run(ctx)
 }
 
 // ParseCommand creates a new root command from 1st OS arg

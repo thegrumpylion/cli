@@ -52,13 +52,13 @@ type PersistentPostRunner interface {
 	PersistentPostRun(ctx context.Context) error
 }
 
-// Execute the chain of commands in default parser
-func Execute(ctx context.Context) error {
-	return defaultCLI.Execute(ctx)
+// Run the chain of commands in default parser
+func Run(ctx context.Context) error {
+	return defaultCLI.Run(ctx)
 }
 
 // Execute the chain of commands
-func (cli *CLI) Execute(ctx context.Context) error {
+func (cli *CLI) Run(ctx context.Context) error {
 
 	var err error
 	lastCmd := len(cli.execList) - 1
