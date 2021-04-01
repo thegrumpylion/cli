@@ -63,6 +63,15 @@ func NewCLI(options ...Option) *CLI {
 	if opts.tags.Cli == "" {
 		opts.tags.Cli = "cli"
 	}
+	if opts.tags.Long == "" {
+		opts.tags.Long = "long"
+	}
+	if opts.tags.Short == "" {
+		opts.tags.Short = "short"
+	}
+	if opts.tags.Env == "" {
+		opts.tags.Env = "env"
+	}
 	if opts.tags.Usage == "" {
 		opts.tags.Usage = "usage"
 	}
@@ -224,18 +233,17 @@ func (cli *CLI) walkStruct(
 		fldName := fld.Name
 		fldType := fld.Type
 
-		// get and parse cli tag
-		var tag *clitag
-		tg := fld.Tag.Get(cli.options.tags.Cli)
-		if tg == "-" {
+		// parse tags
+		tags := cli.options.tags.parseTags(fld.Tag)
+
+		if tags.IsIgnored() {
 			continue
 		}
-		tag = parseCliTag(tg)
 
 		// compute arg name
 		name := cli.options.argCase.Parse(fldName)
-		if tag.long != "" {
-			name = tag.long
+		if tags.Long.name != "" {
+			name = tags.Long.name
 		}
 		if pfx != "" {
 			name = cli.options.argSplicer.Splice(pfx, name)
@@ -243,8 +251,8 @@ func (cli *CLI) walkStruct(
 
 		// compute env var name
 		env := cli.options.envCase.Parse(fldName)
-		if tag.env != "" {
-			env = tag.env
+		if tags.Env.name != "" {
+			env = tags.Env.name
 		}
 		if envpfx != "" {
 			env = cli.options.envSplicer.Splice(envpfx, env)
@@ -265,14 +273,14 @@ func (cli *CLI) walkStruct(
 				continue
 			}
 			// is a ptr to struct but nocmd in tag is set or is a normal struct then this is an arg
-			if tag.noCmd || !isPtr(fldType) {
+			if tags.CmdIsIgnored() || !isPtr(fldType) {
 				cli.walkStruct(c, fldType, spth, name, env, true, globals)
 				continue
 			}
 			// parse struct as a command
 			cname := cli.options.cmdCase.Parse(fldName)
-			if tag.cmd != "" {
-				cname = tag.cmd
+			if tags.Cmd != "" {
+				cname = tags.Cmd
 			}
 			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Usage))
 			cli.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
@@ -282,11 +290,11 @@ func (cli *CLI) walkStruct(
 		// generate long and short flags
 		long := "--" + name
 		short := ""
-		if tag.short != "" {
-			if len(tag.short) != 1 {
-				panic("wrong short tag: " + tag.short)
+		if tags.Short != "" {
+			if len(tags.Short) != 1 {
+				panic("wrong short tag: " + tags.Short)
 			}
-			short = "-" + tag.short
+			short = "-" + tags.Short
 		}
 
 		// check for global args propagation collision
@@ -294,14 +302,14 @@ func (cli *CLI) walkStruct(
 			if globals.Has(long) {
 				panic("global args propagation collision: " + long)
 			}
-			if tag.global {
+			if tags.Cli.global {
 				globals.Add(long)
 			}
 			if short != "" {
 				if globals.Has(short) {
 					panic("global args propagation collision: " + short)
 				}
-				if tag.global {
+				if tags.Cli.global {
 					globals.Add(short)
 				}
 			}
@@ -315,9 +323,9 @@ func (cli *CLI) walkStruct(
 			long:        long,
 			short:       short,
 			env:         env,
-			required:    tag.required,
-			positional:  tag.positional,
-			global:      tag.global,
+			required:    tags.Cli.required,
+			positional:  tags.Cli.positional,
+			global:      tags.Cli.global,
 			def:         fld.Tag.Get(cli.options.tags.Default),
 			help:        fld.Tag.Get(cli.options.tags.Usage),
 			placeholder: strings.ToUpper(name),
