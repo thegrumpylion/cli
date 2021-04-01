@@ -23,6 +23,7 @@ type cliOptions struct {
 	separator      Separator
 	cmdColSize     uint
 	flagColSize    uint
+	identSize      uint
 }
 
 // Option option type for Parser
@@ -118,5 +119,12 @@ func WithCmdColumnSize(s uint) Option {
 func WithFlagColumnSize(s uint) Option {
 	return func(o *cliOptions) {
 		o.flagColSize = s
+	}
+}
+
+// WithIdentSize sets the ident size for command, flags & arguments displayed in help
+func WithIdentSize(s uint) Option {
+	return func(o *cliOptions) {
+		o.identSize = s
 	}
 }

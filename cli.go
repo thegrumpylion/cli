@@ -90,6 +90,9 @@ func NewCLI(options ...Option) *CLI {
 	if opts.flagColSize == 0 {
 		opts.flagColSize = 23
 	}
+	if opts.identSize == 0 {
+		opts.identSize = 4
+	}
 	cli.options = opts
 	cli.completeOut = os.Stdout
 	cli.helpOut = os.Stdout
@@ -240,21 +243,27 @@ func (cli *CLI) walkStruct(
 			continue
 		}
 
-		// compute arg name
+		// compute arg name, TODO: optimize
 		name := cli.options.argCase.Parse(fldName)
+		if tags.LongIsIgnored() {
+			name = ""
+		}
 		if tags.Long.name != "" {
 			name = tags.Long.name
 		}
-		if pfx != "" {
+		if pfx != "" && !tags.LongIsIgnored() {
 			name = cli.options.argSplicer.Splice(pfx, name)
 		}
 
-		// compute env var name
+		// compute env var name, TODO: optimize
 		env := cli.options.envCase.Parse(fldName)
+		if tags.EnvIsIgnored() {
+			env = ""
+		}
 		if tags.Env.name != "" {
 			env = tags.Env.name
 		}
-		if envpfx != "" {
+		if envpfx != "" && !tags.EnvIsIgnored() {
 			env = cli.options.envSplicer.Splice(envpfx, env)
 		}
 
@@ -285,6 +294,16 @@ func (cli *CLI) walkStruct(
 			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Usage))
 			cli.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
 			continue
+		}
+
+		// check for explicit long flag name
+		if tags.Long.explicit {
+			name = tags.Long.name
+		}
+
+		// check for explicit env var name
+		if tags.Env.explicit {
+			env = tags.Env.name
 		}
 
 		// generate long and short flags
@@ -330,7 +349,9 @@ func (cli *CLI) walkStruct(
 			help:        fld.Tag.Get(cli.options.tags.Usage),
 			placeholder: strings.ToUpper(name),
 		}
-		c.AddArg(a)
+		if added := c.AddArg(a); !added {
+			panic(fmt.Sprintf("flag name already added for command: %s long: %s short: %s", c.Name, a.long, a.short))
+		}
 
 		// get the underlaying type if pointer
 		if isPtr(fldType) {

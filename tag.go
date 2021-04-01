@@ -52,6 +52,13 @@ func (st structTags) CmdIsIgnored() bool {
 	return st.Cmd == "-"
 }
 
+func (st structTags) LongIsIgnored() bool {
+	if st.Long != nil {
+		return st.Long.ignored
+	}
+	return false
+}
+
 func (st structTags) EnvIsIgnored() bool {
 	if st.Env != nil {
 		return st.Env.ignored
@@ -85,10 +92,15 @@ func parseCliTag(s string) *cliTag {
 type longTag struct {
 	name     string
 	explicit bool
+	ignored  bool
 }
 
 func parseLongTag(s string) *longTag {
 	tag := &longTag{}
+	if s == "-" {
+		tag.ignored = true
+		return tag
+	}
 	parts := strings.Split(s, ",")
 	switch len(parts) {
 	case 1:

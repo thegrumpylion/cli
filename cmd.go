@@ -25,12 +25,12 @@ func (c *command) self() interface{} {
 	return c.path.Get()
 }
 
-func (c *command) AddArg(a *argument) {
+func (c *command) AddArg(a *argument) bool {
 	if a.positional {
 		c.positionals = append(c.positionals, a)
-		return
+		return true
 	}
-	c.flags.Add(a)
+	return c.flags.Add(a)
 }
 
 func (c *command) GetFlag(n string) *argument {
@@ -78,6 +78,9 @@ func (c *command) Description() string {
 
 func (c *command) SubcmdDescription() (out []string) {
 	for _, sc := range c.subcmds {
+		if sc.hidden {
+			continue
+		}
 		b := strings.Builder{}
 		b.WriteString(sc.Name)
 		l := int(c.opts.cmdColSize)
@@ -118,6 +121,11 @@ func (c *command) FlagDescription() (out []string) {
 		if flg.def != "" {
 			b.WriteString(" (default: ")
 			b.WriteString(flg.def)
+			b.WriteByte(')')
+		}
+		if flg.env != "" {
+			b.WriteString(" (env: ")
+			b.WriteString(flg.env)
 			b.WriteByte(')')
 		}
 		if flg.required {
@@ -187,48 +195,64 @@ func (c *command) Usage(w io.Writer) {
 	} else {
 		t = template.Must(template.New("").Parse(leafCmdTpl))
 	}
-	if err := t.Execute(w, c); err != nil {
+	if err := t.Execute(w, tplContext{
+		Cmd:   c,
+		Ident: computeIdent(c.opts.identSize),
+	}); err != nil {
 		panic(err)
 	}
 }
 
-var parentCmdTpl = `Usage:
-  {{.Name}}{{range .Flags}} {{.Usage}}{{end}} [command]
-{{- if .Description}}
+type tplContext struct {
+	Cmd   *command
+	Ident string
+}
 
-{{.Description}}
+var parentCmdTpl = `Usage:
+{{.Ident}}{{.Cmd.Name}}{{range .Cmd.Flags}} {{.Usage}}{{end}} [command]
+{{- if .Cmd.Description}}
+
+{{.Cmd.Description}}
 {{- end}}
 
 Commands:
-{{- range .SubcmdDescription}}
-  {{.}}
+{{- range .Cmd.SubcmdDescription}}
+{{$.Ident}}{{.}}
 {{- end}}
-{{- if .FlagDescription}}
+{{- if .Cmd.FlagDescription}}
 
 Flags:
-{{- range .FlagDescription}}
-  {{.}}
+{{- range .Cmd.FlagDescription}}
+{{$.Ident}}{{.}}
 {{- end}}
 {{- end}}
 `
 var leafCmdTpl = `Usage:
-  {{.Name}}{{range .Flags}} {{.Usage}}{{end}}{{range .Positionals}} {{.Usage}}{{end}}
-{{- if .Description}}
+{{.Ident}}{{.Cmd.Name}}{{range .Cmd.Flags}} {{.Usage}}{{end}}{{range .Cmd.Positionals}} {{.Usage}}{{end}}
+{{- if .Cmd.Description}}
 
-{{.Description}}
+{{.Cmd.Description}}
 {{- end}}
-{{- if .FlagDescription}}
+{{- if .Cmd.FlagDescription}}
 
 Flags:
-{{- range .FlagDescription}}
-  {{.}}
+{{- range .Cmd.FlagDescription}}
+{{$.Ident}}{{.}}
 {{- end}}
 {{- end}}
-{{- if .ArgumentDescription}}
+{{- if .Cmd.ArgumentDescription}}
 
 Arguments:
-{{- range .ArgumentDescription}}
-  {{.}}
+{{- range .Cmd.ArgumentDescription}}
+{{$.Ident}}{{.}}
 {{- end}}
 {{- end}}
 `
+
+func computeIdent(s uint) string {
+	sb := strings.Builder{}
+	for i := 0; i < int(s); i++ {
+		sb.WriteByte(' ')
+	}
+	return sb.String()
+}
