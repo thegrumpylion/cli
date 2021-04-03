@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -398,26 +397,6 @@ func TestTextUnmarshaler(t *testing.T) {
 	}
 }
 
-func TestEnvDefaultCase(t *testing.T) {
-	args := &struct {
-		SomeStringVal string
-		SomeIntVal    int
-		SomeStructVal struct {
-			SomeStringVal string
-			SomeIntVal    int
-		}
-	}{}
-
-	NewCommand("root", args)
-
-	root := defaultCLI.cmds["root"]
-
-	for _, a := range root.flags.long {
-		fmt.Println(a.long)
-		fmt.Println(a.env)
-	}
-}
-
 func TestGlobals(t *testing.T) {
 	type subcmd struct {
 		A string
@@ -467,5 +446,8 @@ func TestIsFlag(t *testing.T) {
 	}
 	if !isFlag("-h") {
 		t.Fatal("-h is flag")
+	}
+	if isFlag("-42") {
+		t.Fatal("-42 is a number not a flag")
 	}
 }

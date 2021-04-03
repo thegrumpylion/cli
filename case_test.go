@@ -1,6 +1,8 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestCase(t *testing.T) {
 	type caseTest struct {
@@ -50,6 +52,53 @@ func TestCase(t *testing.T) {
 			if r != tst.out {
 				t.Fatal(r, "not", tst.out, tst.in)
 			}
+		}
+	}
+}
+
+func TestEnvDefaultCase(t *testing.T) {
+	args := &struct {
+		SomeStringVal string
+		SomeIntVal    int
+		SomeStructVal struct {
+			SomeStringVal string
+			SomeIntVal    int
+		}
+	}{}
+
+	NewCommand("root", args)
+
+	root := defaultCLI.cmds["root"]
+
+	cases := []struct {
+		Flag string
+		Env  string
+	}{
+		{
+			"--someStringVal",
+			"SOME_STRING_VAL",
+		},
+		{
+			"--someIntVal",
+			"SOME_INT_VAL",
+		},
+		{
+			"--someStructVal.someStringVal",
+			"SOME_STRUCT_VAL_SOME_STRING_VAL",
+		},
+		{
+			"--someStructVal.someIntVal",
+			"SOME_STRUCT_VAL_SOME_INT_VAL",
+		},
+	}
+
+	for _, c := range cases {
+		a := root.GetFlag(c.Flag)
+		if a == nil {
+			t.Fatal("flag should exist", c.Flag)
+		}
+		if a.env != c.Env {
+			t.Fatal(a.env, "!=", c.Env)
 		}
 	}
 }
