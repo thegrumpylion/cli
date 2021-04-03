@@ -36,7 +36,7 @@ type CLI struct {
 	helpOut     io.Writer
 	errorOut    io.Writer
 	completeOut io.Writer
-	execList    []interface{}
+	runList     []interface{}
 	osExit      func(int)
 }
 
@@ -184,7 +184,7 @@ func (cli *CLI) Parse(args []string) (err error) {
 		}
 	}
 
-	cli.execList = p.ExecList()
+	cli.runList = p.RunList()
 
 	return nil
 }

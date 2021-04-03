@@ -61,10 +61,10 @@ func Run(ctx context.Context) error {
 func (cli *CLI) Run(ctx context.Context) error {
 
 	var err error
-	lastCmd := len(cli.execList) - 1
+	lastCmd := len(cli.runList) - 1
 	pPostRunners := []PersistentPostRunner{}
 
-	for i, inf := range cli.execList {
+	for i, inf := range cli.runList {
 		// PersistentPostRun pushed on a stack to run in a reverse order
 		if rnr, ok := inf.(PersistentPostRunner); ok {
 			pPostRunners = append([]PersistentPostRunner{rnr}, pPostRunners...)

@@ -28,7 +28,7 @@ type parser struct {
 	curCmd    *command
 	curPos    int
 	allPos    bool
-	execList  []interface{}
+	runList   []interface{}
 	isComp    bool
 	expectCmd bool
 	debug     bool
@@ -123,8 +123,8 @@ func (p *parser) Run(args []string) (err error) {
 	return nil
 }
 
-func (p *parser) ExecList() []interface{} {
-	return p.execList
+func (p *parser) RunList() []interface{} {
+	return p.runList
 }
 
 func (p *parser) setCurrentCmd(c *command) {
@@ -137,7 +137,7 @@ func (p *parser) setCurrentCmd(c *command) {
 		}
 	}
 	// add subcommand to execution list
-	p.execList = append(p.execList, p.currentCmd().path.Get())
+	p.runList = append(p.runList, p.currentCmd().path.Get())
 }
 
 func (p *parser) currentCmd() *command {
