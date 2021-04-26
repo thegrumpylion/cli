@@ -343,11 +343,14 @@ func (cli *CLI) walkStruct(
 			short:       short,
 			env:         env,
 			required:    tags.Cli.required,
-			positional:  tags.Cli.positional,
+			positional:  tags.Arg.IsSet(),
 			global:      tags.Cli.global,
 			def:         fld.Tag.Get(cli.options.tags.Default),
 			help:        fld.Tag.Get(cli.options.tags.Usage),
 			placeholder: strings.ToUpper(name),
+		}
+		if tags.Arg.IsSet() && *tags.Arg != "" {
+			a.placeholder = string(*tags.Arg)
 		}
 		if added := c.AddArg(a); !added {
 			panic(fmt.Sprintf("flag name already added for command: %s long: %s short: %s", c.Name, a.long, a.short))

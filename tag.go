@@ -11,6 +11,7 @@ type StructTags struct {
 	Cmd      string
 	Long     string
 	Short    string
+	Arg      string
 	Env      string
 	Default  string
 	Usage    string
@@ -18,7 +19,7 @@ type StructTags struct {
 }
 
 func (st StructTags) parseTags(t reflect.StructTag) structTags {
-	return structTags{
+	ret := structTags{
 		Cli:      parseCliTag(t.Get(st.Cli)),
 		Cmd:      t.Get(st.Cmd),
 		Long:     parseLongTag(t.Get(st.Long)),
@@ -28,6 +29,11 @@ func (st StructTags) parseTags(t reflect.StructTag) structTags {
 		Usage:    t.Get(st.Usage),
 		Complete: t.Get(st.Complete),
 	}
+	if arg, ok := t.Lookup(st.Arg); ok {
+		ret.Arg = new(argTag)
+		*ret.Arg = argTag(arg)
+	}
+	return ret
 }
 
 type structTags struct {
@@ -35,6 +41,7 @@ type structTags struct {
 	Cmd      string
 	Long     *longTag
 	Short    string
+	Arg      *argTag
 	Env      *envTag
 	Default  string
 	Usage    string
@@ -67,10 +74,9 @@ func (st structTags) EnvIsIgnored() bool {
 }
 
 type cliTag struct {
-	ignored    bool
-	required   bool
-	positional bool
-	global     bool
+	ignored  bool
+	required bool
+	global   bool
 }
 
 func parseCliTag(s string) *cliTag {
@@ -80,8 +86,6 @@ func parseCliTag(s string) *cliTag {
 		switch strings.ToLower(key) {
 		case "required":
 			tag.required = true
-		case "positional":
-			tag.positional = true
 		case "global":
 			tag.global = true
 		}
@@ -137,4 +141,10 @@ func parseEnvTag(s string) *envTag {
 		}
 	}
 	return tag
+}
+
+type argTag string
+
+func (t *argTag) IsSet() bool {
+	return t != nil
 }
