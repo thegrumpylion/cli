@@ -208,19 +208,13 @@ func (p *parser) valueState(s string, t parserToken) (StateFunc, error) {
 		return nil, fmt.Errorf("unexpected token: %d at valueState", t)
 	}
 	a := p.currentArg()
-	if a.enum != nil {
-		if err := a.SetValue(a.enum.Value(s)); err != nil {
-			return nil, err
-		}
-		return p.entryState, nil
-	}
 	if tum, ok := a.path.Get().(encoding.TextUnmarshaler); ok {
 		if err := tum.UnmarshalText([]byte(s)); err != nil {
 			return nil, err
 		}
 		return p.entryState, nil
 	}
-	if err := p.currentArg().SetScalarValue(s); err != nil {
+	if err := p.currentArg().SetValue(s); err != nil {
 		return nil, err
 	}
 	return p.entryState, nil

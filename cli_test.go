@@ -451,3 +451,34 @@ func TestIsFlag(t *testing.T) {
 		t.Fatal("-42 is a number not a flag")
 	}
 }
+
+func TestDefaultValues(t *testing.T) {
+
+	args := &struct {
+		Num    int      `default:"5"`
+		String string   `default:"some_value"`
+		List   []string `default:"one two three"`
+	}{}
+
+	NewCommand("root", args)
+
+	if err := Parse([]string{"root"}); err != nil {
+		t.Fatal("failed to parse args: " + err.Error())
+	}
+
+	if args.Num != 5 {
+		t.Fatal("Num should have been 5")
+	}
+	if args.String != "some_value" {
+		t.Fatal("String should have been some_value")
+	}
+	if len(args.List) != 3 {
+		t.Fatal("List should have len 3")
+	}
+	for i, v := range []string{"one", "two", "three"} {
+		if args.List[i] != v {
+			t.Fatalf("List[%d] should have been %q", i, v)
+		}
+	}
+
+}

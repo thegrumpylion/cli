@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/kballard/go-shellquote"
 	"github.com/scylladb/go-set/strset"
 )
 
@@ -172,10 +173,15 @@ func (cli *CLI) Parse(args []string) (err error) {
 		return err
 	}
 
-	// check required
+	// check for required and set default value
 	for _, a := range p.currentCmd().Flags() {
-		if a.required && !a.IsSet() {
-			return fmt.Errorf("required flag not set: %s", a.long)
+		if !a.IsSet() {
+			if a.required {
+				return fmt.Errorf("required flag not set: %s", a.long)
+			}
+			if err := a.SetDefaultValue(); err != nil {
+				panic("failed to set default value for flag: " + a.long)
+			}
 		}
 	}
 	for _, a := range p.currentCmd().Positionals() {
@@ -270,8 +276,9 @@ func (cli *CLI) walkStruct(
 		// create subpath for the current field
 		spth := pth.Subpath(fldName)
 
+		// is struct and does not have custom unmarshaler
 		if isStruct(fldType) && !fldType.Implements(textUnmarshaler) {
-			// embedded struct parse as args of parent
+			// is an embedded struct, parse as args of parent
 			if fld.Anonymous {
 				cli.walkStruct(c, fldType, spth, pfx, envpfx, isArg, globals)
 				continue
@@ -291,7 +298,9 @@ func (cli *CLI) walkStruct(
 			if tags.Cmd != "" {
 				cname = tags.Cmd
 			}
+			// add subcommand to the current command
 			sc := c.AddSubcommand(cname, spth, fld.Tag.Get(cli.options.tags.Usage))
+			// down the rabbit hole we go
 			cli.walkStruct(sc, fldType, spth, "", "", false, globals.Copy())
 			continue
 		}
@@ -345,12 +354,8 @@ func (cli *CLI) walkStruct(
 			required:    tags.Cli.required,
 			positional:  tags.Cli.positional,
 			global:      tags.Cli.global,
-			def:         fld.Tag.Get(cli.options.tags.Default),
 			help:        fld.Tag.Get(cli.options.tags.Usage),
 			placeholder: strings.ToUpper(name),
-		}
-		if added := c.AddArg(a); !added {
-			panic(fmt.Sprintf("flag name already added for command: %s long: %s short: %s", c.Name, a.long, a.short))
 		}
 
 		// get the underlaying type if pointer
@@ -383,6 +388,24 @@ func (cli *CLI) walkStruct(
 				}
 				a.completers = append(a.completers, cmp)
 			}
+		}
+
+		// default value
+		if def := fld.Tag.Get(cli.options.tags.Default); def != "" {
+			defval := []string{def}
+			if a.isSlice {
+				words, err := shellquote.Split(def)
+				if err != nil {
+					panic("default value for array/slice cannot br parsed: " + err.Error())
+				}
+				defval = words
+			}
+			a.def = defval
+		}
+
+		// add the argument to the current command
+		if added := c.AddArg(a); !added {
+			panic(fmt.Sprintf("flag name already added for command: %s long: %s short: %s", c.Name, a.long, a.short))
 		}
 	}
 }

@@ -63,7 +63,7 @@ func (fs *flagSet) Autocomplete(val string) []string {
 type argument struct {
 	path        *path
 	typ         reflect.Type
-	def         string
+	def         []string
 	long        string
 	short       string
 	env         string
@@ -87,12 +87,16 @@ func (a *argument) IsSet() bool {
 	return a.isSet
 }
 
+
 func (a *argument) Reset() {
 	a.isSet = false
 }
 
-func (a *argument) SetScalarValue(val string) error {
+func (a *argument) SetValue(val string) error {
 	a.isSet = true
+	if a.enum != nil {
+		return a.path.Set(a.enum.Value(val))
+	}
 	return a.path.SetScalar(val)
 }
 
@@ -104,9 +108,19 @@ func (a *argument) Append(s string) error {
 	return fmt.Errorf("not an array or a slice")
 }
 
-func (a *argument) SetValue(val interface{}) error {
-	a.isSet = true
-	return a.path.Set(val)
+func (a *argument) SetDefaultValue() error {
+	if a.def == nil {
+		return nil
+	}
+	if a.isSlice {
+		for _, s := range a.def {
+			if err := a.Append(s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return a.SetValue(a.def[0])
 }
 
 func (a *argument) Complete(val string) (out []string) {

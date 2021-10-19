@@ -118,9 +118,9 @@ func (c *command) FlagDescription() (out []string) {
 			b.WriteByte(' ')
 		}
 		b.WriteString(flg.help)
-		if flg.def != "" {
+		if flg.def != nil {
 			b.WriteString(" (default: ")
-			b.WriteString(flg.def)
+			b.WriteString(strings.Join(flg.def, " "))
 			b.WriteByte(')')
 		}
 		if flg.env != "" {
@@ -150,9 +150,9 @@ func (c *command) ArgumentDescription() (out []string) {
 			b.WriteByte(' ')
 		}
 		b.WriteString(arg.help)
-		if arg.def != "" {
+		if arg.def != nil {
 			b.WriteString(" (default: ")
-			b.WriteString(arg.def)
+			b.WriteString(strings.Join(arg.def, " "))
 			b.WriteByte(')')
 		}
 		if arg.required {
