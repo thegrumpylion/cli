@@ -239,6 +239,12 @@ func (cli *CLI) walkStruct(
 
 		// get field
 		fld := t.Field(i)
+
+		// check if unexported
+		if !fld.IsExported() {
+			continue
+		}
+
 		fldName := fld.Name
 		fldType := fld.Type
 
