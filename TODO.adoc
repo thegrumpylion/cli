@@ -1,7 +1,7 @@
 = TODO
 
-* [ ] implement default value logic
-* [ ] handle env
+* [x] implement default value logic
+* [x] handle env
 * [ ] support arrays
 * [ ] support time
 * [ ] support map[string]string, map[string]number, map[string]time
