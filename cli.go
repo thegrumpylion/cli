@@ -175,6 +175,9 @@ func (cli *CLI) Parse(args []string) (err error) {
 
 	// check for required and set default value
 	for _, a := range p.currentCmd().Flags() {
+		if err := a.SetEnv(); err != nil {
+			return err
+		}
 		if !a.IsSet() {
 			if a.required {
 				return fmt.Errorf("required flag not set: %s", a.long)

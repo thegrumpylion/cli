@@ -2,9 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/kballard/go-shellquote"
 )
 
 func newFlagSet() *flagSet {
@@ -87,7 +90,6 @@ func (a *argument) IsSet() bool {
 	return a.isSet
 }
 
-
 func (a *argument) Reset() {
 	a.isSet = false
 }
@@ -106,6 +108,29 @@ func (a *argument) Append(s string) error {
 		return a.path.AppendToSlice(s)
 	}
 	return fmt.Errorf("not an array or a slice")
+}
+
+func (a *argument) SetEnv() error {
+	if a.isSet {
+		return nil
+	}
+	val, ok := os.LookupEnv(a.env)
+	if !ok {
+		return nil
+	}
+	if a.isSlice {
+		words, err := shellquote.Split(val)
+		if err != nil {
+			return err
+		}
+		for _, s := range words {
+			if err := a.Append(s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return a.SetValue(val)
 }
 
 func (a *argument) SetDefaultValue() error {

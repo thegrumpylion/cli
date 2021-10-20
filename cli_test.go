@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -480,5 +481,38 @@ func TestDefaultValues(t *testing.T) {
 			t.Fatalf("List[%d] should have been %q", i, v)
 		}
 	}
+}
 
+func TestEnv(t *testing.T) {
+
+	args := &struct {
+		Num    int
+		String string
+		List   []string
+	}{}
+
+	os.Setenv("NUM", "5")
+	os.Setenv("STRING", "some_value")
+	os.Setenv("LIST", "one two three")
+
+	NewCommand("root", args)
+
+	if err := Parse([]string{"root"}); err != nil {
+		t.Fatal("failed to parse args: " + err.Error())
+	}
+
+	if args.Num != 5 {
+		t.Fatal("Num should have been 5")
+	}
+	if args.String != "some_value" {
+		t.Fatal("String should have been some_value")
+	}
+	if len(args.List) != 3 {
+		t.Fatal("List should have len 3")
+	}
+	for i, v := range []string{"one", "two", "three"} {
+		if args.List[i] != v {
+			t.Fatalf("List[%d] should have been %q", i, v)
+		}
+	}
 }
