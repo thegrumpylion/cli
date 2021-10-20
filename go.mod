@@ -1,6 +1,6 @@
 module github.com/thegrumpylion/cli
 
-go 1.15
+go 1.17
 
 require (
 	github.com/iancoleman/strcase v0.1.3
