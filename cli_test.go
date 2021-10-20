@@ -258,8 +258,9 @@ func (c *SubCmdB) Run(ctx context.Context) error {
 }
 
 type RootCmd struct {
-	SubA *SubCmdA
-	SubB *SubCmdB
+	SomeFlag string
+	SubA     *SubCmdA
+	SubB     *SubCmdB
 }
 
 func (c *RootCmd) PersistentPreRun(ctx context.Context) error {
@@ -359,6 +360,22 @@ func TestRunSubB(t *testing.T) {
 	if !state.subb {
 		t.Fatal("state.subb not set")
 	}
+}
+
+func TestRunWithRootFlag(t *testing.T) {
+	a := &RootCmd{}
+
+	NewCommand("root", a)
+
+	err := Parse([]string{"root", "--someFlag", "someValue", "suba", "--name", "tester"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if a.SomeFlag != "someValue" {
+		t.Fatal("SomeFlag != someValue")
+	}
+
 }
 
 type tUm struct {

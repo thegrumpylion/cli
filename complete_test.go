@@ -61,7 +61,7 @@ func TestCompletion(t *testing.T) {
 			defaultCLI.completeOut = buf
 			defaultCLI.osExit = func(i int) {
 				if buf.String() != c.Expect {
-					t.Fatal("wrong autocompletion", buf.String())
+					t.Fatal("wrong autocompletion", buf.String(), c.Expect)
 				}
 				t.Skip("correct completion", buf.String())
 			}

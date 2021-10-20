@@ -242,14 +242,13 @@ func (cli *CLI) walkStruct(
 
 		// get field
 		fld := t.Field(i)
-
-		// check if unexported
-		if !fld.IsExported() {
-			continue
-		}
-
 		fldName := fld.Name
 		fldType := fld.Type
+
+		// check if unexported and not embedded struct
+		if !fld.IsExported() && !(isStruct(fldType) && fld.Anonymous) {
+			continue
+		}
 
 		// parse tags
 		tags := cli.options.tags.parseTags(fld.Tag)

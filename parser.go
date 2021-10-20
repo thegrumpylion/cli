@@ -217,6 +217,9 @@ func (p *parser) valueState(s string, t parserToken) (StateFunc, error) {
 	if err := p.currentArg().SetValue(s); err != nil {
 		return nil, err
 	}
+	if p.currentCmd().HasSubcommands() {
+		p.expectCmd = true
+	}
 	return p.entryState, nil
 }
 func (p *parser) sliceValueState(s string, t parserToken) (StateFunc, error) {
@@ -300,7 +303,7 @@ func (p *parser) tokenType(s string) parserToken {
 	if s == "--" {
 		return tokALLPOS
 	}
-	if len(p.currentCmd().subcmdsMap) != 0 && p.expectCmd {
+	if p.currentCmd().HasSubcommands() && p.expectCmd {
 		return tokCMD
 	}
 	return tokVAL
