@@ -4,7 +4,12 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"golang.org/x/exp/constraints"
 )
+
+type Enum interface {
+}
 
 type enum struct {
 	typ    reflect.Type
@@ -12,12 +17,9 @@ type enum struct {
 	values map[string]interface{}
 }
 
-func newEnum(enumMap interface{}) *enum {
+func newEnum[T constraints.Integer](enumMap map[string]T) *enum {
 	v := reflect.ValueOf(enumMap)
 	t := reflect.TypeOf(enumMap)
-	if t.Kind() != reflect.Map {
-		panic("enumMap must be a map")
-	}
 
 	// key is the string of enum
 	if t.Key().Kind() != reflect.String {

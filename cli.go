@@ -12,6 +12,7 @@ import (
 
 	"github.com/kballard/go-shellquote"
 	"github.com/scylladb/go-set/strset"
+	"golang.org/x/exp/constraints"
 )
 
 type Descriptioner interface {
@@ -28,12 +29,13 @@ type Versioner interface {
 
 var defaultCLI = NewCLI()
 
+var enums = map[reflect.Type]*enum{}
+
 // CLI holds the cli state and configration
 type CLI struct {
 	options     *cliOptions
 	roots       []reflect.Value
 	cmds        map[string]*command
-	enums       map[reflect.Type]*enum
 	helpOut     io.Writer
 	errorOut    io.Writer
 	completeOut io.Writer
@@ -45,7 +47,6 @@ type CLI struct {
 func NewCLI(options ...Option) *CLI {
 	cli := &CLI{
 		cmds:   map[string]*command{},
-		enums:  map[reflect.Type]*enum{},
 		osExit: os.Exit,
 	}
 	opts := &cliOptions{
@@ -199,15 +200,9 @@ func (cli *CLI) Parse(args []string) (err error) {
 }
 
 // RegisterEnum resgister an enum map to the default CLI
-func RegisterEnum(enumMap interface{}) {
-	defaultCLI.RegisterEnum(enumMap)
-}
-
-// RegisterEnum resgister an enum map. map must have string key and int/uint
-// value. The value must also be a custom type e.g. type MyEnum uint32
-func (cli *CLI) RegisterEnum(enumMap interface{}) {
+func RegisterEnum[T constraints.Integer](enumMap map[string]T) {
 	enm := newEnum(enumMap)
-	cli.enums[enm.typ] = enm
+	enums[enm.typ] = enm
 }
 
 func (cli *CLI) addRoot(in interface{}) *path {
@@ -382,7 +377,7 @@ func (cli *CLI) walkStruct(
 
 		// check for enums
 		if isInt(fldType) || isUint(fldType) {
-			if enm, ok := cli.enums[fldType]; ok {
+			if enm, ok := enums[fldType]; ok {
 				a.enum = enm
 			}
 		}
