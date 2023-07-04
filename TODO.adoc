@@ -7,3 +7,4 @@
 * [ ] support map[string]string, map[string]number, map[string]time
 * [ ] rename help tag to usage
 * [ ] struct errors & error handling
+* [ ] better completion
